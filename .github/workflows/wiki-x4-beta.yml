@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/wiki-x4-beta.yml'
       - 'wiki-build-request.txt'
+      - 'wiki-beta3-overlay.tar.gz'
   workflow_dispatch:
 
 permissions:
@@ -28,7 +29,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - name: Verify beta 2 reviewed source
+      - name: Verify locally tested beta 2 source fingerprints
         run: |
           python - <<'PY'
           import hashlib, json
@@ -37,39 +38,81 @@ jobs:
           for name,digest in expected.items():
             actual=hashlib.sha256(Path(name).read_bytes()).hexdigest()
             if actual!=digest: raise SystemExit('Source transfer mismatch: '+name+' '+actual)
-          print('All',len(expected),'reviewed beta 2 source files match.')
+          print('All',len(expected),'reviewed source files match the local tested copies.')
           PY
-      - name: Integrate beta 3 source
+      - name: Integrate reviewed Wiki beta 2 source
         run: |
           set -euo pipefail
           python scripts/wiki_harden.py
           python scripts/wiki_integrate.py
           python scripts/wiki_beta2_integrate.py
-          python scripts/wiki_beta3_patch.py
           git diff --check
+      - name: Verify and apply reviewed Wiki beta 3 overlay
+        run: |
+          set -euo pipefail
+          cp wiki-beta3-overlay.tar.gz /tmp/wiki-beta3-overlay.tar.gz
+          echo "67d274746aae27b4d58c5a47e55b16f83eb43112e2cb7b0d3fd877b4a9cc3a2e  /tmp/wiki-beta3-overlay.tar.gz" | sha256sum -c -
+          rm -rf /tmp/wiki-beta3-overlay && mkdir -p /tmp/wiki-beta3-overlay
+          tar -xzf /tmp/wiki-beta3-overlay.tar.gz -C /tmp/wiki-beta3-overlay
+          python - <<'PY'
+          import hashlib, json, shutil
+          from pathlib import Path
+          tmp=Path('/tmp/wiki-beta3-overlay'); root=Path('.')
+          expected=json.loads((tmp/'input-hashes.json').read_text())
+          for name,digest in expected.items():
+              actual=hashlib.sha256((root/name).read_bytes()).hexdigest()
+              if actual!=digest: raise SystemExit('Beta 3 input mismatch: '+name+' '+actual)
+          files=json.loads((tmp/'overlay-files-sha256.json').read_text())
+          for name,digest in files.items():
+              src=tmp/'files'/name
+              actual=hashlib.sha256(src.read_bytes()).hexdigest()
+              if actual!=digest: raise SystemExit('Overlay corruption: '+name+' '+actual)
+              dst=root/name; dst.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(src,dst)
+          print('Applied',len(files),'reviewed beta 3 overlay files after validating',len(expected),'beta 2 inputs.')
+          PY
+          git diff --check
+      - name: Verify beta 3 generated source fingerprints
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          expected=json.loads(Path('wiki-beta3-reviewed-source.json').read_text())
+          for name,digest in expected.items():
+              actual=hashlib.sha256(Path(name).read_bytes()).hexdigest()
+              if actual!=digest: raise SystemExit('Beta 3 source mismatch: '+name+' '+actual)
+          print('All',len(expected),'beta 3 source fingerprints match.')
+          PY
       - name: Upload integrated source for inspection
         uses: actions/upload-artifact@v6
         with:
-          name: wiki-beta3-source-debug
+          name: wiki-source-debug
           path: |
             src/activities/wiki/
             src/activities/home/HomeActivity.h
             src/activities/home/HomeActivity.cpp
             src/activities/ActivityManager.h
+            src/components/icons/wikiGlobe.h
+            src/components/icons/wikiLogo.h
             src/activities/settings/TextSettingsActivity.h
             src/activities/settings/TextSettingsActivity.cpp
             src/activities/settings/TextSettingsPreview.h
             src/activities/settings/TextSettingsPreview.cpp
-            src/components/icons/wikiGlobe.h
-            src/components/icons/wikiLogo.h
             src/components/themes/BaseTheme.h
             src/components/themes/BaseTheme.cpp
             src/components/themes/lyra/LyraTheme.cpp
             src/components/themes/roundedraff/RoundedRaffTheme.cpp
+            src/components/UiAppHelpers.h
             lib/InflateReader/
             lib/uzlib/
-            scripts/wiki_beta3_patch.py
+            scripts/wiki_*.py
             platformio.local.ini
+            WIKI_BETA.md
+            WIKI_BETA2.md
+            WIKI_BETA3.md
+            WIKIPEDIA_LOGO_NOTICE.md
+            WIKI_VALIDATION.md
+            wiki-beta2-reviewed-source.json
+            LICENSE
           if-no-files-found: error
       - name: Install host test dependencies
         run: |
@@ -79,6 +122,18 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/wiki_native_verify.py 2>&1 | tee wiki-host-tests.log
+      - name: Test beta 2 compatibility
+        run: |
+          set -euo pipefail
+          python scripts/wiki_beta2_tests.py 2>&1 | tee wiki-beta2-tests.log
+      - name: Test beta 3 native text settings and UI
+        run: |
+          set -euo pipefail
+          python scripts/wiki_beta3_tests.py 2>&1 | tee wiki-beta3-tests.log
+      - name: Test beta 3 enlarged bold heading rasterizer
+        run: |
+          set -euo pipefail
+          python scripts/wiki_heading_tests.py 2>&1 | tee wiki-heading-tests.log
       - name: Restore ESP32 compiler cache
         id: pio-cache
         continue-on-error: true
@@ -87,8 +142,8 @@ jobs:
           path: |
             ~/.platformio
             .cache
-          key: wiki-pio-v4-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
-          restore-keys: wiki-pio-v4-${{ runner.os }}-
+          key: wiki-pio-v3-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
+          restore-keys: wiki-pio-v3-${{ runner.os }}-
       - name: Install upstream build dependencies
         run: |
           python -m pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
@@ -111,7 +166,7 @@ jobs:
         if: ${{ steps.compile.outcome == 'success' }}
         uses: actions/upload-artifact@v6
         with:
-          name: wiki-beta3-raw-build-NOT-VALIDATED
+          name: wiki-raw-build-inspection-NOT-VALIDATED
           path: |
             .pio/build/wiki_x4_beta/firmware.bin
             .pio/build/wiki_x4_beta/partitions.bin
@@ -120,13 +175,8 @@ jobs:
       - name: Validate and package beta 3 candidate
         run: |
           set -euo pipefail
-          python - <<'PY' 2>&1 | tee wiki-package.log
-          import wiki_package
-          wiki_package.NAME='crosspoint-1.6.0-wiki-beta3-x4-UNTESTED.bin'
-          wiki_package.UI_VERSION='1.6.0-wiki-beta3'
-          wiki_package.main()
-          PY
-      - name: Upload beta 3 candidate
+          python scripts/wiki_beta3_package.py 2>&1 | tee wiki-package.log
+      - name: Upload beta candidate
         uses: actions/upload-artifact@v6
         with:
           name: crosspoint-1.6.0-wiki-beta3-x4-UNTESTED
@@ -136,10 +186,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: wiki-beta3-build-log
+          name: wiki-build-log
           path: |
             wiki-build.log
             wiki-host-tests.log
+            wiki-beta2-tests.log
+            wiki-beta3-tests.log
+            wiki-heading-tests.log
             wiki-real-pack-report.json
             wiki-package.log
           if-no-files-found: ignore
@@ -151,4 +204,4 @@ jobs:
           path: |
             ~/.platformio
             .cache
-          key: wiki-pio-v4-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
+          key: wiki-pio-v3-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
