@@ -1,0 +1,40 @@
+name: Wiki beta 2 reference inspection
+on:
+  push:
+    branches: [wiki-x4-beta]
+    paths: ['.github/workflows/wiki-beta2-reference.yml']
+permissions:
+  contents: read
+jobs:
+  reference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Collect source interfaces and pinned reference data
+        run: |
+          python - <<'PY'
+          import hashlib, pathlib, tarfile, urllib.request
+          root=pathlib.Path('.'); out=root/'wiki-reference';out.mkdir()
+          names={'GfxRenderer.h','GfxRenderer.cpp','HalStorage.h','HalStorage.cpp','Icon.h','Activity.h','Activity.cpp','MappedInputManager.h','MappedInputManager.cpp','RecentBooksStore.cpp','RecentBooksStore.h','fontIds.h','ActivityManager.cpp','KeyboardEntryActivity.h','KeyboardEntryActivity.cpp','Bitmap.h'}
+          prefixes=('src/components/','src/util/','lib/InflateReader/','lib/uzlib/')
+          with tarfile.open(out/'source-interfaces.tar.gz','w:gz') as tar:
+            for p in root.rglob('*'):
+              s=p.as_posix()
+              if not p.is_file() or '.git' in p.parts or 'fonts' in [v.lower() for v in p.parts]: continue
+              if p.name in names or (s.startswith(prefixes) and p.suffix in ('.h','.cpp','.c')): tar.add(p,arcname=s)
+          url='https://github.com/Sparkadium/crosspoint-reader-almanac/releases/download/v1.1.0-almanac/wikipedia.cdb'
+          dest=out/'wikipedia.cdb'
+          urllib.request.urlretrieve(url,dest)
+          assert dest.stat().st_size==48523777
+          assert hashlib.sha256(dest.read_bytes()).hexdigest()=='c994f024322352de9e8ec96092834b2296f2304400337a016dc7a8eedf0e2b30'
+          (out/'PROVENANCE.txt').write_text('Simple English Wikipedia contributors; applicable CC BY-SA. Published WCDB pack by Sparkadium. Source: '+url+'\nThis artifact is input data/source inspection, NOT firmware.\n')
+          PY
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wiki-beta2-reference-data-NOT-FIRMWARE
+          path: wiki-reference/
+          if-no-files-found: error
