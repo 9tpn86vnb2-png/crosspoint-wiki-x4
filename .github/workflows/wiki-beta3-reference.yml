@@ -1,0 +1,36 @@
+name: Wiki beta 3 source interfaces
+on:
+  push:
+    branches: [wiki-x4-beta]
+    paths: ['.github/workflows/wiki-beta3-reference.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Collect source only, no font files or user content
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tarfile, hashlib, json
+          out=Path('wiki-beta3-interfaces');out.mkdir()
+          hashes={}
+          with tarfile.open(out/'source.tar.gz','w:gz') as tar:
+            for base in ('src','lib','freeink-sdk'):
+              for p in Path(base).rglob('*'):
+                if not p.is_file() or p.suffix not in ('.cpp','.h','.c','.ini','.py') or p.stat().st_size>250000: continue
+                if any(t.lower() in ('.git','fonts','generated','fontdata') for t in p.parts): continue
+                tar.add(p,arcname=str(p));hashes[str(p)]=hashlib.sha256(p.read_bytes()).hexdigest()
+          (out/'source-hashes.json').write_text(json.dumps(hashes,indent=2))
+          PY
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wiki-beta3-source-interfaces-NOT-FIRMWARE
+          path: wiki-beta3-interfaces/
+          if-no-files-found: error
