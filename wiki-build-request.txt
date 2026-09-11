@@ -1,0 +1,6 @@
+Build request: Wiki beta 1, original ESP32-C3 X4.
+Use ESP-IDF CONFIG_APP_PROJECT_VER_FROM_CONFIG and CONFIG_APP_PROJECT_VER
+so the SDK descriptor is exactly 1.6.0-wiki-beta1, matching the UI version.
+Preserve source commit and git-describe as separate build-manifest fields.
+Keep archive/decoder tests, malformed-input regression, image integrity,
+partition-fit and hardened-source checks required before publishing a candidate.
