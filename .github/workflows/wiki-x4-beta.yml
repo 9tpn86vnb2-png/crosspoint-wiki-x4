@@ -28,9 +28,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - name: Integrate reviewed Wiki home menu
+      - name: Integrate reviewed Wiki menu and decoder fix
         run: |
           set -euo pipefail
+          python scripts/wiki_harden.py
           python scripts/wiki_integrate.py
           git diff --check
       - name: Upload integrated source for inspection
@@ -47,28 +48,34 @@ jobs:
             scripts/wiki_*.py
             platformio.local.ini
             WIKI_BETA.md
+            WIKI_VALIDATION.md
             LICENSE
           if-no-files-found: error
       - name: Install host test dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y zlib1g-dev
-      - name: Test archive and published Wikipedia pack
+      - name: Test hardened decoder and published Wikipedia pack
         run: |
           set -euo pipefail
-          python scripts/wiki_host_tests.py 2>&1 | tee wiki-host-tests.log
-      - name: Restore ESP32 package cache
-        uses: actions/cache@v4
+          python scripts/wiki_native_verify.py 2>&1 | tee wiki-host-tests.log
+      - name: Restore ESP32 compiler cache
+        id: pio-cache
+        continue-on-error: true
+        uses: actions/cache/restore@v4
         with:
-          path: ~/.platformio
-          key: wiki-pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
-          restore-keys: wiki-pio-${{ runner.os }}-
+          path: |
+            ~/.platformio
+            .cache
+          key: wiki-pio-v3-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
+          restore-keys: wiki-pio-v3-${{ runner.os }}-
       - name: Install upstream build dependencies
         run: |
           python -m pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
           python -m pip install -r requirements.txt
           python -m pip install 'littlefs-python>=0.16.0' 'fatfs-ng>=0.1.14' 'pyyaml>=6.0.2' 'rich-click>=1.8.6' 'zopfli>=0.2.2' 'intelhex>=2.3.0' 'rich>=14.0.0' 'urllib3<2' 'cryptography>=45.0.3' 'certifi>=2025.8.3' 'ecdsa>=0.19.1' 'bitstring>=4.3.1' 'reedsolo>=1.5.3,<1.8' 'esp-idf-size>=2.0.0' 'esp-coredump>=1.14.0' 'esptool>=5,<6'
       - name: Build original X4 application only
+        id: compile
         run: |
           set -euo pipefail
           pio run -e wiki_x4_beta 2>&1 | tee wiki-build.log
@@ -90,3 +97,12 @@ jobs:
             wiki-host-tests.log
             wiki-real-pack-report.json
           if-no-files-found: ignore
+      - name: Preserve compiler cache after a build attempt
+        if: ${{ always() && steps.pio-cache.outputs.cache-hit != 'true' && (steps.compile.outcome == 'success' || steps.compile.outcome == 'failure') }}
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.platformio
+            .cache
+          key: wiki-pio-v3-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
