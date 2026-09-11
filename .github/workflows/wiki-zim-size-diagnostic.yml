@@ -5,6 +5,7 @@ on:
     branches: [wiki-x4-beta]
     paths:
       - '.github/workflows/wiki-zim-size-diagnostic.yml'
+      - 'wiki-zim-size-diagnostic-request.txt'
   workflow_dispatch:
 
 permissions:
@@ -86,8 +87,7 @@ jobs:
                       row['smallest_patched_window_that_decodes_identically']=min(successful) if successful else None
                   rows.append(row)
                   print(p.name,json.dumps(row,sort_keys=True))
-              report={'file':p.name,'clusters':rows}
-              return report
+              return {'file':p.name,'clusters':rows}
 
           reports=[inspect('/tmp/ray-mini.zim'),inspect('/tmp/ray-nopic.zim')]
           Path('wiki-zim-size-diagnostic.json').write_text(json.dumps(reports,indent=2)+'\n')
