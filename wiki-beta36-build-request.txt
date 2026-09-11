@@ -3,3 +3,4 @@ Add native themed battery indicator throughout the Wiki module and optional Wiki
 Preserve Beta 3.5 WCDB library selection and per-library saved articles.
 Require host regressions, ESP32-C3 compilation, image checksum/hash checks, and fit in the standard 0x640000 application slot.
 Application-only candidate; do not merge bootloader, partition or dualboot data.
+Trigger: final reviewed beta 3.6 overlay and workflow are present.
