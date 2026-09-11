@@ -71,19 +71,20 @@ def main():
     harden(check_only=True)
     image = (BUILD / 'firmware.bin').read_bytes()
     info = inspect(image)
-    # The Arduino/ESP-IDF application descriptor uses git-describe, whereas
-    # CrossPoint's on-screen release name comes from CROSSPOINT_VERSION.
-    # Preserve and verify both instead of treating the two as interchangeable.
-    expected_git_version = subprocess.check_output(
-        ['git', 'describe', '--tags', '--always', '--dirty'], cwd=ROOT, text=True).strip()
-    if info['app_descriptor_version'] != expected_git_version:
-        raise ValueError('Application descriptor does not match this source checkout: '
-            + repr(info['app_descriptor_version']) + ' != ' + repr(expected_git_version))
+    # IDF officially supports setting PROJECT_VER through Kconfig. Use that
+    # setting so a cached SDK cannot label this app with an older Git commit.
+    # Git identity is retained separately; no firmware bytes are patched here.
+    profile = (ROOT / 'platformio.local.ini').read_text()
     expected_flag = '-DCROSSPOINT_VERSION=\\"' + UI_VERSION + '\\"'
-    if expected_flag not in (ROOT / 'platformio.local.ini').read_text():
-        raise ValueError('The custom beta display-version flag is missing')
+    if expected_flag not in profile or 'CONFIG_APP_PROJECT_VER_FROM_CONFIG=y' not in profile or \
+            'CONFIG_APP_PROJECT_VER="' + UI_VERSION + '"' not in profile:
+        raise ValueError('The beta UI/SDK version configuration is missing')
+    if info['app_descriptor_version'] != UI_VERSION:
+        raise ValueError('Wrong SDK application version: ' + repr(info['app_descriptor_version']))
     if UI_VERSION.encode('ascii') + b'\0' not in image:
         raise ValueError('Custom beta display version absent from compiled application')
+    source_git_describe = subprocess.check_output(
+        ['git', 'describe', '--tags', '--always', '--dirty'], cwd=ROOT, text=True).strip()
     table = partitions((BUILD / 'partitions.bin').read_bytes())
     apps = [p for p in table if p['type'] == 0]
     if not apps or any(len(image) > p['size'] for p in apps): raise ValueError('Firmware does not fit application slots')
@@ -106,10 +107,10 @@ def main():
         'scripts/wiki_host_tests.py', 'scripts/wiki_native_verify.py']
     source_hashes = {name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in source_names}
     manifest = {'artifact': NAME, 'image': info, 'ui_version': UI_VERSION,
-        'expected_git_descriptor_version': expected_git_version,
-        'descriptor_matches_source_checkout': True,
+        'expected_app_descriptor_version': UI_VERSION,
+        'descriptor_matches_configured_version': True,
         'custom_display_version_found_in_image': True,
-        'build_partitions': table,
+        'source_git_describe': source_git_describe, 'build_partitions': table,
         'crosspoint_base': '54337e6d73fc628f4ba523ddc89a743ca8c6e4c5',
         'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
         'submodules': subprocess.check_output(['git', 'submodule', 'status', '--recursive'], cwd=ROOT, text=True).strip(),
