@@ -1,0 +1,16 @@
+{
+  "WIKI_BETA2.md": "b36faa3e0e972c4d1fd5f4a6865b1cbcbd69a711d9b2c0ca90ab9aee615c58b9",
+  "platformio.local.ini": "dae9cd475f840379be2b05a0c5891d3ebb119ad97df8a43d519a19dca15356d3",
+  "scripts/wiki_beta2_integrate.py": "44bebf958bceccae1cf3697c5370d2055336b30d83c9ca828dfbd81de6de79e7",
+  "scripts/wiki_beta2_package.py": "1681d8525d021b832e50d028da2a4affebfd90939038cf7551d231a3ae632d00",
+  "scripts/wiki_beta2_tests.py": "129dd2b0e98c307b82f6c9a328c6a4c9562abd72c711d2b49fa7fb3ef5a6e2d9",
+  "src/activities/wiki/WikiActivity.cpp": "006d464934b8524cbc85ac4e7fd3d937be14a5f2757cfdfe662b9c5144e58360",
+  "src/activities/wiki/WikiActivity.h": "8cb903bf1d4b1476b733a46aafa3cef5f180425e7b668cc4366bfeb2c9f7fdfd",
+  "src/activities/wiki/WikiArchive.cpp": "19af8a62ee95bae1797393dbe07882c77a2caf942dab016d00b667a576a53148",
+  "src/activities/wiki/WikiArchive.h": "4f9b3d83276040b3906337e8a60df7efac04aab62df5ee4631307734e80d183f",
+  "src/activities/wiki/WikiBookmarks.cpp": "9892ee92824d7d293c7f42ff9aca0a9e68a324a1d4a6a79bf1f37cfe2270807f",
+  "src/activities/wiki/WikiBookmarks.h": "3a7a54c443aaf780766768c724ba5f0379ecd48fc44b6c0b37c16b9963b52b24",
+  "src/activities/wiki/WikiText.cpp": "99b0286c4819c2b91173548e9cfe438f37eccf9267fdadb3ee4cc9487016b50e",
+  "src/activities/wiki/WikiText.h": "457a1aae1865732ef074bbec9b428eac37a4b1d0bc5be6a0fbbe9a746c465590",
+  "src/components/icons/wikiGlobe.h": "8a49839159ac55fff9eb499bf8a92cd3338b8d2815eb61cad2bd66ee3bfe63d4"
+}

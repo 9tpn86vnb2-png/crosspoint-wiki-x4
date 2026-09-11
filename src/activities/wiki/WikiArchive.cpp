@@ -9,6 +9,16 @@
 #include <utility>
 
 namespace {
+std::string queryKey(const std::string& text) {
+  std::string out;
+  bool separator = false;
+  for (unsigned char c : text) {
+    if (c == ' ' || c == '_' || c == '-' || c == '\t' || c == '\r' || c == '\n') { separator = !out.empty(); continue; }
+    if (separator) { out += '-'; separator = false; }
+    out += c >= 'A' && c <= 'Z' ? char(c + 32) : char(c);
+  }
+  return out;
+}
 uint32_t little32(const uint8_t* p) {
   return uint32_t(p[0]) | (uint32_t(p[1]) << 8) | (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
 }
@@ -133,6 +143,7 @@ WikiArchive::Entry WikiArchive::line(uint32_t index) const {
       if (tab == end) return {};
       Entry result;
       result.title.assign(reinterpret_cast<const char*>(raw_.get() + pos), tab - pos);
+      result.key = result.title;
       result.text.assign(reinterpret_cast<const char*>(raw_.get() + tab + 1), end - tab - 1);
       result.found = true;
       return result;
@@ -190,7 +201,14 @@ WikiArchive::Entry WikiArchive::resolve(Entry entry) {
 }
 
 WikiArchive::Entry WikiArchive::search(const std::string& query, bool prefix) {
-  return resolve(lookup(query, prefix));
+  auto entry = lookup(query, prefix);
+  // The published pack stores multiword titles as lower-case hyphenated keys.
+  // Try literal lookup first to remain compatible with non-slug WCDB packs.
+  if (!entry.found && !query.empty() && query.size() <= 1024) {
+    const auto slug = queryKey(query);
+    if (slug != folded(query)) entry = lookup(slug, prefix);
+  }
+  return resolve(std::move(entry));
 }
 WikiArchive::Entry WikiArchive::first() {
   if (!ready_ || !load(0)) return {};
@@ -226,4 +244,49 @@ WikiArchive::Entry WikiArchive::random() {
   cursorBlock_ = block;
   cursorLine_ = esp_random() % lineCount();
   return resolve(line(cursorLine_));
+}
+
+std::vector<WikiArchive::Title> WikiArchive::titles(const std::string& query, bool& more, size_t limit) {
+  std::vector<Title> results;
+  more = false;
+  if (!ready_ || query.empty() || query.size() > 1024 || !limit) return results;
+  limit = std::min<size_t>(limit, 16);
+  const std::string literal = folded(query), slug = queryKey(query);
+  for (unsigned attempt = 0; attempt < 2; ++attempt) {
+    if (attempt && (slug == literal || !results.empty())) break;
+    const std::string& prefix = attempt ? slug : literal;
+    if (prefix.empty()) continue;
+    uint32_t firstBlock = 0;
+    if (!findStart(prefix, firstBlock)) return results;
+    size_t allocated = 0;
+    bool stop = false;
+    for (uint32_t block = firstBlock; block < blocks_ && !stop; ++block) {
+      if (!load(block)) return {};
+      uint32_t pos = 0;
+      while (pos < rawSize_) {
+        uint32_t end = pos;
+        while (end < rawSize_ && raw_[end] != '\n') ++end;
+        uint32_t tab = pos;
+        while (tab < end && raw_[tab] != '\t') ++tab;
+        const std::string title(reinterpret_cast<const char*>(raw_.get()+pos), tab-pos);
+        const auto lower = folded(title);
+        if (lower.compare(0, prefix.size(), prefix) == 0) {
+          if (results.size() >= limit || allocated + 2 * title.size() + 512 > 16384) { more = true; return results; }
+          std::string label = title;
+          uint32_t colon = tab+1;
+          while (colon < end && colon-tab <= 513 && raw_[colon] != ':') ++colon;
+          if (colon < end && raw_[colon] == ':') {
+            const std::string candidate(reinterpret_cast<const char*>(raw_.get()+tab+1), colon-tab-1);
+            if (queryKey(candidate) == queryKey(title)) label = candidate;
+          }
+          if (label == title) { for (char& c : label) if (c == '-' || c == '_') c = ' '; if (!label.empty() && label[0] >= 'a' && label[0] <= 'z') label[0] -= 32; }
+          allocated += title.size()+label.size();
+          results.push_back({title,std::move(label)});
+        } else if (lower > prefix) { stop = true; break; }
+        pos = end+1;
+      }
+      delay(1);
+    }
+  }
+  return results;
 }

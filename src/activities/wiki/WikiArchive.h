@@ -5,15 +5,19 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 #include <HalStorage.h>
 
 class WikiArchive {
  public:
   struct Entry {
     std::string title;
+    std::string key;
     std::string text;
     bool found = false;
   };
+  struct Title { std::string key, label; };
+  std::vector<Title> titles(const std::string& query, bool& more, size_t limit = 16);
   bool open(const char* path);
   void close();
   bool ready() const { return ready_; }

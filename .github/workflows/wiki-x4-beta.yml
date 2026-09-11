@@ -28,11 +28,23 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - name: Integrate reviewed Wiki menu and decoder fix
+      - name: Verify locally tested beta 2 source fingerprints
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          expected=json.loads(Path('wiki-beta2-reviewed-source.json').read_text())
+          for name,digest in expected.items():
+            actual=hashlib.sha256(Path(name).read_bytes()).hexdigest()
+            if actual!=digest: raise SystemExit('Source transfer mismatch: '+name+' '+actual)
+          print('All',len(expected),'reviewed source files match the local tested copies.')
+          PY
+      - name: Integrate reviewed Wiki menu, globe and decoder fix
         run: |
           set -euo pipefail
           python scripts/wiki_harden.py
           python scripts/wiki_integrate.py
+          python scripts/wiki_beta2_integrate.py
           git diff --check
       - name: Upload integrated source for inspection
         uses: actions/upload-artifact@v6
@@ -43,12 +55,20 @@ jobs:
             src/activities/home/HomeActivity.h
             src/activities/home/HomeActivity.cpp
             src/activities/ActivityManager.h
+            src/components/icons/wikiGlobe.h
+            src/components/themes/BaseTheme.h
+            src/components/themes/BaseTheme.cpp
+            src/components/themes/lyra/LyraTheme.cpp
+            src/components/themes/roundedraff/RoundedRaffTheme.cpp
+            src/components/UiAppHelpers.h
             lib/InflateReader/
             lib/uzlib/
             scripts/wiki_*.py
             platformio.local.ini
             WIKI_BETA.md
+            WIKI_BETA2.md
             WIKI_VALIDATION.md
+            wiki-beta2-reviewed-source.json
             LICENSE
           if-no-files-found: error
       - name: Install host test dependencies
@@ -59,6 +79,10 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/wiki_native_verify.py 2>&1 | tee wiki-host-tests.log
+      - name: Test beta 2 search, bookmarks, UI and text with host adapters
+        run: |
+          set -euo pipefail
+          python scripts/wiki_beta2_tests.py 2>&1 | tee wiki-beta2-tests.log
       - name: Restore ESP32 compiler cache
         id: pio-cache
         continue-on-error: true
@@ -78,13 +102,9 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          # The upstream cache key contains sdkconfig but not PROJECT_VER.
-          # Removing its request marker makes the reviewed upstream pre-script
-          # rebuild this chip's SDK from the original template. Do not patch
-          # the resulting firmware bytes or accept a stale descriptor instead.
           marker = Path.home() / '.platformio/packages/framework-arduinoespressif32-libs/esp32c3/sdkconfig.crosspoint'
           marker.unlink(missing_ok=True)
-          print('Invalidated the source-dependent ESP32-C3 SDK metadata cache.')
+          print('Invalidated source-dependent ESP32-C3 SDK metadata for beta 2.')
           PY
       - name: Build original X4 application only
         id: compile
@@ -101,14 +121,14 @@ jobs:
             .pio/build/wiki_x4_beta/partitions.bin
           include-hidden-files: true
           if-no-files-found: error
-      - name: Validate and package candidate
+      - name: Validate and package beta 2 candidate
         run: |
           set -euo pipefail
-          python scripts/wiki_package.py 2>&1 | tee wiki-package.log
+          python scripts/wiki_beta2_package.py 2>&1 | tee wiki-package.log
       - name: Upload beta candidate
         uses: actions/upload-artifact@v6
         with:
-          name: crosspoint-1.6.0-wiki-beta1-x4-UNTESTED
+          name: crosspoint-1.6.0-wiki-beta2-x4-UNTESTED
           path: wiki-dist/
           if-no-files-found: error
       - name: Upload build and test logs
@@ -119,6 +139,7 @@ jobs:
           path: |
             wiki-build.log
             wiki-host-tests.log
+            wiki-beta2-tests.log
             wiki-real-pack-report.json
             wiki-package.log
           if-no-files-found: ignore
