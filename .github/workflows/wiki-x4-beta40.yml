@@ -1,0 +1,384 @@
+name: X4 Wiki 4.0 XML
+
+on:
+  push:
+    branches: [wiki-x4-beta]
+    paths:
+      - '.github/workflows/wiki-x4-beta40.yml'
+      - 'wiki-beta40-overlay.b64.part00'
+      - 'wiki-beta40-overlay.b64.part01'
+      - 'wiki-beta40-build-request.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wiki-x4-beta40-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Reconstruct and verify reviewed beta 3 overlay
+        run: |
+          set -euo pipefail
+          cat wiki-beta3-overlay.b64.part00 \
+              wiki-beta3-overlay.b64.part01 \
+              wiki-beta3-overlay.b64.part02 \
+              wiki-beta3-overlay.b64.part03 \
+              wiki-beta3-overlay.b64.part04 \
+              wiki-beta3-overlay.b64.part05 \
+              wiki-beta3-overlay.b64.part06 \
+            | tr -d '\r\n' | base64 -d > /tmp/wiki-beta3-overlay.tar.gz
+          echo '67d274746aae27b4d58c5a47e55b16f83eb43112e2cb7b0d3fd877b4a9cc3a2e  /tmp/wiki-beta3-overlay.tar.gz' | sha256sum -c -
+
+      - name: Integrate reviewed beta 2 base
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          expected=json.loads(Path('wiki-beta2-reviewed-source.json').read_text())
+          for name,digest in expected.items():
+              actual=hashlib.sha256(Path(name).read_bytes()).hexdigest()
+              if actual!=digest: raise SystemExit('Beta 2 source mismatch: '+name+' '+actual)
+          PY
+          python scripts/wiki_harden.py
+          python scripts/wiki_integrate.py
+          python scripts/wiki_beta2_integrate.py
+          git diff --check
+
+      - name: Install host test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zlib1g-dev
+
+      - name: Test decoder, published pack, and beta 2
+        run: |
+          set -euo pipefail
+          python scripts/wiki_native_verify.py 2>&1 | tee wiki-host-tests.log
+          python scripts/wiki_beta2_tests.py 2>&1 | tee wiki-beta2-tests.log
+
+      - name: Apply and test reviewed beta 3
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/wiki-beta3-overlay && mkdir -p /tmp/wiki-beta3-overlay
+          tar -xzf /tmp/wiki-beta3-overlay.tar.gz -C /tmp/wiki-beta3-overlay
+          python - <<'PY'
+          import hashlib,json,shutil
+          from pathlib import Path
+          tmp=Path('/tmp/wiki-beta3-overlay');root=Path('.')
+          manifest=tmp/'files'/'wiki-beta3-reviewed-source.json'
+          if hashlib.sha256(manifest.read_bytes()).hexdigest()!='7ad901019676e5a80dea4dd876e528c0e5d29d5879be97ce0750bc44de6c3801':
+              raise SystemExit('Beta 3 manifest mismatch')
+          for name,digest in json.loads((tmp/'input-hashes.json').read_text()).items():
+              if hashlib.sha256((root/name).read_bytes()).hexdigest()!=digest: raise SystemExit('Beta 3 input mismatch: '+name)
+          for name,digest in json.loads((tmp/'overlay-files-sha256.json').read_text()).items():
+              src=tmp/'files'/name
+              if hashlib.sha256(src.read_bytes()).hexdigest()!=digest: raise SystemExit('Beta 3 overlay corruption: '+name)
+              dst=root/name;dst.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(src,dst)
+          for name,digest in json.loads(Path('wiki-beta3-reviewed-source.json').read_text()).items():
+              if hashlib.sha256(Path(name).read_bytes()).hexdigest()!=digest: raise SystemExit('Beta 3 source mismatch: '+name)
+          PY
+          git diff --check
+          python scripts/wiki_beta3_tests.py 2>&1 | tee wiki-beta3-tests.log
+          python scripts/wiki_heading_tests.py 2>&1 | tee wiki-heading-tests.log
+
+      - name: Reconstruct and apply reviewed beta 3.5
+        run: |
+          set -euo pipefail
+          cat wiki-beta35-overlay.b64.part00 \
+              wiki-beta35-overlay.b64.part01a \
+              wiki-beta35-overlay.b64.part01b \
+              wiki-beta35-overlay.b64.part02 \
+            | tr -d '\r\n' | base64 -d > /tmp/wiki-beta35-overlay.tar.gz
+          echo '7a56f4114a721ad6f03da168dfd3b2c129fc6725cb85947fc9677d6f3bc993f8  /tmp/wiki-beta35-overlay.tar.gz' | sha256sum -c -
+          rm -rf /tmp/wiki-beta35-overlay && mkdir -p /tmp/wiki-beta35-overlay
+          tar -xzf /tmp/wiki-beta35-overlay.tar.gz -C /tmp/wiki-beta35-overlay
+          python - <<'PY'
+          import hashlib,json,shutil
+          from pathlib import Path
+          tmp=Path('/tmp/wiki-beta35-overlay');root=Path('.')
+          for name,digest in json.loads((tmp/'input-hashes.json').read_text()).items():
+              if hashlib.sha256((root/name).read_bytes()).hexdigest()!=digest: raise SystemExit('Beta 3.5 input mismatch: '+name)
+          for name,digest in json.loads((tmp/'overlay-files-sha256.json').read_text()).items():
+              src=tmp/'files'/name
+              if hashlib.sha256(src.read_bytes()).hexdigest()!=digest: raise SystemExit('Beta 3.5 overlay corruption: '+name)
+              dst=root/name;dst.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(src,dst)
+          for name,digest in json.loads(Path('wiki-beta35-reviewed-source.json').read_text()).items():
+              if hashlib.sha256(Path(name).read_bytes()).hexdigest()!=digest: raise SystemExit('Beta 3.5 source mismatch: '+name)
+          PY
+          git diff --check
+          python scripts/wiki_beta35_tests.py 2>&1 | tee wiki-beta35-tests.log
+
+      - name: Verify and apply reviewed beta 3.6 overlay
+        run: |
+          set -euo pipefail
+          cat wiki-beta36-overlay.b64.part00 \
+              wiki-beta36-overlay.b64.part01 \
+              wiki-beta36-overlay.b64.part02a \
+              wiki-beta36-overlay.b64.part02b \
+              wiki-beta36-overlay.b64.part03a \
+              wiki-beta36-overlay.b64.part03b \
+            | tr -d '\r\n' | base64 -d > /tmp/wiki-beta36-overlay.tar.gz
+          echo '6c7e7ed07abbffca4272f3572a30554c1b5340d6db890bcc7b3dc783b6373989  /tmp/wiki-beta36-overlay.tar.gz' | sha256sum -c -
+          rm -rf /tmp/wiki-beta36-overlay && mkdir -p /tmp/wiki-beta36-overlay
+          tar -xzf /tmp/wiki-beta36-overlay.tar.gz -C /tmp/wiki-beta36-overlay
+          python - <<'PY'
+          import hashlib,json,shutil
+          from pathlib import Path
+          tmp=Path('/tmp/wiki-beta36-overlay');root=Path('.')
+          for name,digest in json.loads((tmp/'input-hashes.json').read_text()).items():
+              actual=hashlib.sha256((root/name).read_bytes()).hexdigest()
+              if actual!=digest: raise SystemExit('Beta 3.6 input mismatch: '+name+' '+actual)
+          files=json.loads((tmp/'overlay-files-sha256.json').read_text())
+          for name,digest in files.items():
+              src=tmp/'files'/name
+              if hashlib.sha256(src.read_bytes()).hexdigest()!=digest: raise SystemExit('Beta 3.6 overlay corruption: '+name)
+              dst=root/name;dst.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(src,dst)
+          expected=json.loads(Path('wiki-beta36-reviewed-source.json').read_text())
+          for name,digest in expected.items():
+              actual=hashlib.sha256(Path(name).read_bytes()).hexdigest()
+              if actual!=digest: raise SystemExit('Beta 3.6 source mismatch: '+name+' '+actual)
+          PY
+          git diff --check
+          python scripts/wiki_beta36_tests.py 2>&1 | tee wiki-beta36-tests.log
+
+      - name: Reconstruct beta 3.9 baseline
+        run: |
+          set -euo pipefail
+          python scripts/wiki_beta37_integrate.py
+          python scripts/wiki_beta38_integrate.py
+          python scripts/wiki_beta39_integrate.py
+          git diff --check
+          python scripts/wiki_beta39_tests.py 2>&1 | tee wiki-beta39-tests.log
+          python - <<'PY'
+          from pathlib import Path
+          assert '1.6.0-wiki-beta3.9' in Path('platformio.local.ini').read_text()
+          print('Beta 3.9 baseline reconstructed.')
+          PY
+
+      - name: Reconstruct, verify, and test Wiki 4.0 XML overlay
+        run: |
+          set -euo pipefail
+          cat wiki-beta40-overlay.b64.part00 \
+              wiki-beta40-overlay.b64.part01 \
+            | tr -d '\r\n' | base64 -d > /tmp/wiki-beta40-overlay.tar.gz
+          echo '79107fa050bda58f4a51b0e74b4f442deb1cc61ba815f56a7fdbe0ca5ce5b4eb  /tmp/wiki-beta40-overlay.tar.gz' | sha256sum -c -
+          rm -rf /tmp/wiki-beta40-overlay && mkdir -p /tmp/wiki-beta40-overlay
+          tar -xzf /tmp/wiki-beta40-overlay.tar.gz -C /tmp/wiki-beta40-overlay
+          python - <<'PY'
+          import hashlib,json,shutil
+          from pathlib import Path
+          tmp=Path('/tmp/wiki-beta40-overlay'); root=Path('.')
+          inputs=json.loads((tmp/'input-hashes.json').read_text())
+          for name,digest in inputs.items():
+              actual=hashlib.sha256((root/name).read_bytes()).hexdigest()
+              if actual!=digest: raise SystemExit('Beta 4.0 input mismatch: '+name+' '+actual)
+          files=json.loads((tmp/'overlay-files-sha256.json').read_text())
+          for name,digest in files.items():
+              src=tmp/'files'/name
+              actual=hashlib.sha256(src.read_bytes()).hexdigest()
+              if actual!=digest: raise SystemExit('Beta 4.0 overlay corruption: '+name+' '+actual)
+              dst=root/name; dst.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(src,dst)
+          reviewed=json.loads(Path('wiki-beta40-reviewed-source.json').read_text())
+          for name,digest in reviewed.items():
+              actual=hashlib.sha256(Path(name).read_bytes()).hexdigest()
+              if actual!=digest: raise SystemExit('Beta 4.0 source mismatch: '+name+' '+actual)
+          print('Applied and verified',len(files),'beta 4.0 overlay files.')
+          PY
+          git diff --check
+          python scripts/wiki_beta40_xml_tests.py 2>&1 | tee wiki-beta40-tests.log
+          python - <<'PY'
+          from pathlib import Path
+          a=Path('src/activities/wiki/WikiArchive.cpp').read_text()
+          h=Path('src/activities/wiki/WikiArchive.h').read_text()
+          ui=Path('src/activities/wiki/WikiActivity.cpp').read_text()
+          p=Path('platformio.local.ini').read_text()
+          assert 'MediaWikiXml' in h and 'MediaWikiXml' in a
+          assert 'WXMLIDX1' in a
+          assert '.xml' in ui and '[XML]' in ui
+          assert '1.6.0-wiki-4.0' in p
+          assert 'zim_supported' not in a.lower()
+          print('Wiki 4.0 XML source invariants verified.')
+          PY
+
+      - name: Upload Wiki 4.0 integrated source for inspection
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-beta40-source-debug
+          path: |
+            src/activities/wiki/
+            src/activities/settings/TextSettingsActivity.h
+            src/activities/settings/TextSettingsActivity.cpp
+            src/components/UITheme.h
+            src/components/themes/BaseTheme.h
+            src/components/themes/BaseTheme.cpp
+            src/components/UiAppHelpers.h
+            lib/GfxRenderer/
+            lib/InflateReader/
+            lib/uzlib/
+            scripts/wiki_*.py
+            platformio.local.ini
+            WIKI_BETA.md
+            WIKI_BETA2.md
+            WIKI_BETA3.md
+            WIKI_BETA35.md
+            WIKI_BETA36.md
+            WIKI_BETA37.md
+            WIKI_BETA38.md
+            WIKI_BETA39.md
+            WIKI_BETA40.md
+            WIKIPEDIA_LOGO_NOTICE.md
+            WIKI_VALIDATION.md
+            wiki-beta2-reviewed-source.json
+            wiki-beta3-reviewed-source.json
+            wiki-beta35-reviewed-source.json
+            wiki-beta36-reviewed-source.json
+            wiki-beta37-reviewed-source.json
+            wiki-beta38-reviewed-source.json
+            wiki-beta39-reviewed-source.json
+            wiki-beta40-reviewed-source.json
+            LICENSE
+          if-no-files-found: error
+
+      - name: Restore ESP32 compiler cache
+        id: pio-cache
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .cache
+          key: wiki-pio-v3-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
+          restore-keys: wiki-pio-v3-${{ runner.os }}-
+
+      - name: Install upstream build dependencies
+        run: |
+          python -m pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+          python -m pip install -r requirements.txt
+          python -m pip install 'littlefs-python>=0.16.0' 'fatfs-ng>=0.1.14' 'pyyaml>=6.0.2' 'rich-click>=1.8.6' 'zopfli>=0.2.2' 'intelhex>=2.3.0' 'rich>=14.0.0' 'urllib3<2' 'cryptography>=45.0.3' 'certifi>=2025.8.3' 'ecdsa>=0.19.1' 'bitstring>=4.3.1' 'reedsolo>=1.5.3,<1.8' 'esp-idf-size>=2.0.0' 'esp-coredump>=1.14.0' 'esptool>=5,<6'
+
+      - name: Refresh source-dependent SDK metadata
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          marker=Path.home()/'.platformio/packages/framework-arduinoespressif32-libs/esp32c3/sdkconfig.crosspoint'
+          marker.unlink(missing_ok=True)
+          print('Invalidated source-dependent ESP32-C3 SDK metadata for Wiki 4.0.')
+          PY
+
+      - name: Build original X4 application only
+        id: compile
+        run: |
+          set -euo pipefail
+          pio run -e wiki_x4_beta 2>&1 | tee wiki-build.log
+
+      - name: Retain raw build for independent inspection
+        if: ${{ steps.compile.outcome == 'success' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-beta40-raw-build-inspection-NOT-VALIDATED
+          path: |
+            .pio/build/wiki_x4_beta/firmware.bin
+            .pio/build/wiki_x4_beta/partitions.bin
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Validate and package Wiki 4.0 candidate
+        run: |
+          set -euo pipefail
+          PYTHONPATH=scripts python - <<'PY' 2>&1 | tee wiki-package.log
+          import hashlib,json,shutil,tarfile
+          from pathlib import Path
+          import wiki_package as base
+          base.NAME='crosspoint-1.6.0-wiki-4.0-x4-UNTESTED.bin'
+          base.UI_VERSION='1.6.0-wiki-4.0'
+          base.main()
+          root,out=base.ROOT,base.OUT
+          manifest=json.loads((out/'build-manifest.json').read_text())
+          hashes=manifest['compiled_and_supporting_source_sha256']
+          extra=[
+              'scripts/wiki_beta37_integrate.py','scripts/wiki_beta38_integrate.py','scripts/wiki_beta39_integrate.py',
+              'scripts/wiki_beta39_tests.py','scripts/wiki_beta40_xml_tests.py',
+              'WIKI_BETA37.md','WIKI_BETA38.md','WIKI_BETA39.md','WIKI_BETA40.md',
+              'wiki-beta37-reviewed-source.json','wiki-beta38-reviewed-source.json','wiki-beta39-reviewed-source.json',
+              'wiki-beta40-reviewed-source.json']
+          for name in extra:
+              hashes[name]=hashlib.sha256((root/name).read_bytes()).hexdigest()
+          manifest.update(
+            features=['Beta 3.9 feature set','Native uncompressed MediaWiki XML library backend','Persistent low-RAM XML title sidecar index','Bounded MediaWiki wikitext-to-reader simplifier'],
+            wiki_library_formats=['WCDB .cdb','MediaWiki XML .xml'],
+            wiki_scan_roots=['/','/Wikipedia','/Wiki'],
+            xml_supported=True,
+            xml_format='Uncompressed MediaWiki export/dump XML with <mediawiki> root',
+            xml_index='Persistent /.crosspoint/wiki/*.xwi sidecar keyed to source path, source size, and bounded source signature',
+            xml_article_buffer_max_bytes=49152,
+            xml_wikitext='Headings, paragraphs, lists, link labels, basic entities and redirects; templates/tables/references/files/categories/unsupported HTML simplified or stripped',
+            xml_compressed_supported=False,
+            zim_supported=False,
+            images_supported_in_xml=False,
+            wiki_data_changed=False,
+            hardware_tested=False)
+          (out/'build-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          shutil.copy2(root/'WIKI_BETA40.md',out/'WIKI_BETA40.md')
+          with tarfile.open(out/'wiki-changed-source.tar.gz','w:gz') as tar:
+              for name in sorted(hashes):
+                  p=root/name
+                  if p.is_file(): tar.add(p,arcname=name)
+          sums=[]
+          for p in sorted(out.iterdir()):
+              if p.is_file() and p.name!='SHA256SUMS.txt':
+                  sums.append(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name)
+          (out/'SHA256SUMS.txt').write_text('\n'.join(sums)+'\n')
+          print('Wiki 4.0 package finalized with',len(hashes),'source fingerprints.')
+          PY
+
+      - name: Upload Wiki 4.0 candidate
+        uses: actions/upload-artifact@v6
+        with:
+          name: crosspoint-1.6.0-wiki-4.0-x4-UNTESTED
+          path: wiki-dist/
+          if-no-files-found: error
+
+      - name: Upload build and test logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-beta40-build-log
+          path: |
+            wiki-build.log
+            wiki-host-tests.log
+            wiki-beta2-tests.log
+            wiki-beta3-tests.log
+            wiki-heading-tests.log
+            wiki-beta35-tests.log
+            wiki-beta36-tests.log
+            wiki-beta39-tests.log
+            wiki-beta40-tests.log
+            wiki-real-pack-report.json
+            wiki-package.log
+          if-no-files-found: ignore
+
+      - name: Preserve compiler cache after a build attempt
+        if: ${{ always() && steps.compile.outcome != 'skipped' }}
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.platformio
+            .cache
+          key: wiki-pio-v3-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
