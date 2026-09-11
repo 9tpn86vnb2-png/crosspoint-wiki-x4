@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / '.pio/build/wiki_x4_beta'
 OUT = ROOT / 'wiki-dist'
 NAME = 'crosspoint-1.6.0-wiki-beta1-x4-UNTESTED.bin'
+UI_VERSION = '1.6.0-wiki-beta1'
 
 def inspect(data):
     def require(condition, message):
@@ -32,8 +33,10 @@ def inspect(data):
         require(cursor + size <= len(data), 'Truncated segment')
         if index == 0:
             require(size >= 176 and data[cursor:cursor+4] == b'\x32\x54\xcd\xab', 'No application descriptor')
-            version = data[cursor+16:cursor+48].split(b'\0')[0].decode('ascii')
-            require(version == '1.6.0-wiki-beta1', 'Wrong application version: ' + version)
+            raw_version = data[cursor+16:cursor+48]
+            require(b'\0' in raw_version, 'Unterminated application version')
+            version = raw_version.split(b'\0')[0].decode('ascii')
+            require(bool(version), 'Empty application descriptor version')
         checksum = functools.reduce(operator.xor, data[cursor:cursor+size], checksum)
         cursor += size
     end = (cursor // 16) * 16 + 16
@@ -41,7 +44,7 @@ def inspect(data):
     require(data[end-1] == checksum, 'Image checksum failed')
     require(all(x == 0 for x in data[cursor:end-1]), 'Nonzero image padding')
     require(hashlib.sha256(data[:end]).digest() == data[end:], 'Appended SHA-256 failed')
-    return {'chip': 'ESP32-C3', 'version': version, 'bytes': len(data),
+    return {'chip': 'ESP32-C3', 'app_descriptor_version': version, 'bytes': len(data),
         'sha256': hashlib.sha256(data).hexdigest(), 'checksum_valid': True, 'appended_sha256_valid': True}
 
 def partitions(data):
@@ -65,11 +68,22 @@ def partitions(data):
     return result
 
 def main():
-    # The first malformed-input fuzz pass exposed a real upstream decoder bug.
-    # Never publish a candidate built without the reviewed source fix.
     harden(check_only=True)
     image = (BUILD / 'firmware.bin').read_bytes()
     info = inspect(image)
+    # The Arduino/ESP-IDF application descriptor uses git-describe, whereas
+    # CrossPoint's on-screen release name comes from CROSSPOINT_VERSION.
+    # Preserve and verify both instead of treating the two as interchangeable.
+    expected_git_version = subprocess.check_output(
+        ['git', 'describe', '--tags', '--always', '--dirty'], cwd=ROOT, text=True).strip()
+    if info['app_descriptor_version'] != expected_git_version:
+        raise ValueError('Application descriptor does not match this source checkout: '
+            + repr(info['app_descriptor_version']) + ' != ' + repr(expected_git_version))
+    expected_flag = '-DCROSSPOINT_VERSION=\\"' + UI_VERSION + '\\"'
+    if expected_flag not in (ROOT / 'platformio.local.ini').read_text():
+        raise ValueError('The custom beta display-version flag is missing')
+    if UI_VERSION.encode('ascii') + b'\0' not in image:
+        raise ValueError('Custom beta display version absent from compiled application')
     table = partitions((BUILD / 'partitions.bin').read_bytes())
     apps = [p for p in table if p['type'] == 0]
     if not apps or any(len(image) > p['size'] for p in apps): raise ValueError('Firmware does not fit application slots')
@@ -91,7 +105,11 @@ def main():
         'scripts/wiki_integrate.py', 'scripts/wiki_harden.py', 'scripts/wiki_package.py',
         'scripts/wiki_host_tests.py', 'scripts/wiki_native_verify.py']
     source_hashes = {name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in source_names}
-    manifest = {'artifact': NAME, 'image': info, 'build_partitions': table,
+    manifest = {'artifact': NAME, 'image': info, 'ui_version': UI_VERSION,
+        'expected_git_descriptor_version': expected_git_version,
+        'descriptor_matches_source_checkout': True,
+        'custom_display_version_found_in_image': True,
+        'build_partitions': table,
         'crosspoint_base': '54337e6d73fc628f4ba523ddc89a743ca8c6e4c5',
         'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
         'submodules': subprocess.check_output(['git', 'submodule', 'status', '--recursive'], cwd=ROOT, text=True).strip(),
@@ -105,7 +123,7 @@ def main():
         path = ROOT / name
         if path.is_file(): shutil.copy2(path, OUT / name)
     (OUT / 'build-dependencies.txt').write_text(subprocess.check_output([sys.executable, '-m', 'pip', 'freeze'], text=True))
-    # Include all modified C/C++ source, with original notices, not font assets.
+    # Include modified C/C++ sources with their notices, never font assets.
     with tarfile.open(OUT / 'wiki-changed-source.tar.gz', 'w:gz') as archive:
         for name in source_names: archive.add(ROOT/name, arcname=name)
     sums = []
