@@ -79,8 +79,20 @@ jobs:
         run: |
           set -euo pipefail
           pio run -e wiki_x4_beta 2>&1 | tee wiki-build.log
+      - name: Retain raw build for independent inspection
+        if: ${{ steps.compile.outcome == 'success' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-raw-build-inspection-NOT-VALIDATED
+          path: |
+            .pio/build/wiki_x4_beta/firmware.bin
+            .pio/build/wiki_x4_beta/partitions.bin
+          include-hidden-files: true
+          if-no-files-found: error
       - name: Validate and package candidate
-        run: python scripts/wiki_package.py
+        run: |
+          set -euo pipefail
+          python scripts/wiki_package.py 2>&1 | tee wiki-package.log
       - name: Upload beta candidate
         uses: actions/upload-artifact@v6
         with:
@@ -96,6 +108,7 @@ jobs:
             wiki-build.log
             wiki-host-tests.log
             wiki-real-pack-report.json
+            wiki-package.log
           if-no-files-found: ignore
       - name: Preserve compiler cache after a build attempt
         if: ${{ always() && steps.pio-cache.outputs.cache-hit != 'true' && (steps.compile.outcome == 'success' || steps.compile.outcome == 'failure') }}
