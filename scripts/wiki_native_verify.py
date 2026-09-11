@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Additional host verification using the exact firmware decompressor sources.
-Runs existing host tests, then actual InflateReader/uzlib tests. Still not device tests.
+"""Verify the hardened firmware decoder against reference data and random input.
+Exact firmware C/C++ decoder sources run on a host under ASan/UBSan, not on X4.
 """
 from pathlib import Path
 import subprocess
 import sys
 import wiki_host_tests
+from wiki_harden import harden
 
 ROOT = Path(__file__).resolve().parents[1]
 WORK = ROOT / 'wiki-test-build'
@@ -14,6 +15,7 @@ FLAGS = ['-O1', '-g', '-Wall', '-Wextra', '-fsanitize=address,undefined',
          '-fno-omit-frame-pointer', '-ffunction-sections', '-fdata-sections']
 
 def main():
+    harden()
     wiki_host_tests.main()
     NATIVE.mkdir(exist_ok=True)
     subprocess.run(['gcc', '-std=c99', *FLAGS, '-Ilib/uzlib/src', '-c',
@@ -31,6 +33,35 @@ def main():
     real=WORK/'published-wikipedia.cdb'
     if '--skip-real' not in sys.argv: args.append(str(real))
     subprocess.run(args,check=True)
+    fuzz=r'''#include <InflateReader.h>
+#include <array>
+#include <cassert>
+#include <cstdint>
+#include <iostream>
+#include <random>
+int main() {
+ std::mt19937 rng(1729);
+ std::array<uint8_t,512> source{};
+ std::array<uint8_t,32769> output{};
+ unsigned done=0,error=0,more=0;
+ for(unsigned i=0;i<50000;++i) {
+  const size_t input=1+rng()%source.size(), limit=1+rng()%output.size();
+  for(size_t j=0;j<input;++j)source[j]=static_cast<uint8_t>(rng());
+  InflateReader reader; assert(reader.init(false));reader.setSource(source.data(),input);
+  size_t produced=0;
+  auto status=reader.readAtMost(output.data(),limit,&produced);
+  assert(produced<=limit);
+  if(status==InflateStatus::Done)++done;
+  else if(status==InflateStatus::Error)++error;
+  else ++more;
+ }
+ std::cout<<"Hardened firmware decoder: 50,000 seeded random inputs completed within output bounds under ASan/UBSan ("
+          <<done<<" done, "<<error<<" rejected, "<<more<<" more-data statuses).\n";
+}
+'''
+    (NATIVE/'fuzz.cpp').write_text(fuzz)
+    compile_cpp(NATIVE/'fuzz.cpp',NATIVE/'fuzz')
+    subprocess.run([str(NATIVE/'fuzz')],check=True,timeout=45)
     if '--skip-real' in sys.argv: return
     program=r'''#include <InflateReader.h>
 #include <zlib.h>
@@ -72,7 +103,7 @@ int main(int argc,char** argv) {
    check(std::memcmp(actual.data(),expected.data(),raw)==0,"Firmware/reference bytes differ");
    total+=raw;
   }
-  std::cout<<"Actual CrossPoint InflateReader/uzlib matches host zlib for ALL "<<blocks
+  std::cout<<"Hardened CrossPoint InflateReader/uzlib matches host zlib for ALL "<<blocks
            <<" published Wikipedia blocks ("<<total<<" uncompressed bytes). Host ASan/UBSan; not device tests.\n";
  } catch(const std::exception& error) { std::cerr<<error.what()<<"\n";return 1; }
 }
