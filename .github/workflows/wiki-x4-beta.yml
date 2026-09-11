@@ -50,14 +50,17 @@ jobs:
       - name: Verify and apply reviewed Wiki beta 3 overlay
         run: |
           set -euo pipefail
-          cp wiki-beta3-overlay.tar.gz /tmp/wiki-beta3-overlay.tar.gz
-          echo "67d274746aae27b4d58c5a47e55b16f83eb43112e2cb7b0d3fd877b4a9cc3a2e  /tmp/wiki-beta3-overlay.tar.gz" | sha256sum -c -
           rm -rf /tmp/wiki-beta3-overlay && mkdir -p /tmp/wiki-beta3-overlay
-          tar -xzf /tmp/wiki-beta3-overlay.tar.gz -C /tmp/wiki-beta3-overlay
+          tar -xzf wiki-beta3-overlay.tar.gz -C /tmp/wiki-beta3-overlay
           python - <<'PY'
           import hashlib, json, shutil
           from pathlib import Path
           tmp=Path('/tmp/wiki-beta3-overlay'); root=Path('.')
+          manifest=tmp/'files'/'wiki-beta3-reviewed-source.json'
+          manifest_digest=hashlib.sha256(manifest.read_bytes()).hexdigest()
+          expected_manifest='7ad901019676e5a80dea4dd876e528c0e5d29d5879be97ce0750bc44de6c3801'
+          if manifest_digest != expected_manifest:
+              raise SystemExit('Beta 3 reviewed manifest mismatch: '+manifest_digest)
           expected=json.loads((tmp/'input-hashes.json').read_text())
           for name,digest in expected.items():
               actual=hashlib.sha256((root/name).read_bytes()).hexdigest()
