@@ -6,7 +6,7 @@ on:
     paths:
       - '.github/workflows/wiki-x4-beta36.yml'
       - 'wiki-beta36-build-request.txt'
-      - 'wiki-beta36-overlay.b64'
+      - 'wiki-beta36-overlay.b64.part*'
   workflow_dispatch:
 
 permissions:
@@ -124,7 +124,13 @@ jobs:
       - name: Verify and apply reviewed beta 3.6 overlay
         run: |
           set -euo pipefail
-          base64 -d wiki-beta36-overlay.b64 > /tmp/wiki-beta36-overlay.tar.gz
+          cat wiki-beta36-overlay.b64.part00 \
+              wiki-beta36-overlay.b64.part01 \
+              wiki-beta36-overlay.b64.part02a \
+              wiki-beta36-overlay.b64.part02b \
+              wiki-beta36-overlay.b64.part03a \
+              wiki-beta36-overlay.b64.part03b \
+            | tr -d '\r\n' | base64 -d > /tmp/wiki-beta36-overlay.tar.gz
           echo '6c7e7ed07abbffca4272f3572a30554c1b5340d6db890bcc7b3dc783b6373989  /tmp/wiki-beta36-overlay.tar.gz' | sha256sum -c -
           rm -rf /tmp/wiki-beta36-overlay && mkdir -p /tmp/wiki-beta36-overlay
           tar -xzf /tmp/wiki-beta36-overlay.tar.gz -C /tmp/wiki-beta36-overlay
