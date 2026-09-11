@@ -127,8 +127,8 @@ def main() -> None:
         '.xml' in activity and '[XML]' in activity,
         '1.6.0-wiki-4.0' in pio,
         'wiki-beta3.9' not in pio,
-        'XML_INDEX_RECORD_BYTES' in archive_cpp,
-        'XML_ARTICLE_MAX' in archive_cpp,
+        'XML_INDEX_RECORD_BYTES' in archive_h,
+        'XML_ARTICLE_MAX' in archive_h,
         'builtIndexOnOpen' in archive_cpp,
     ]
     if not all(assertions):
