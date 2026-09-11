@@ -12,7 +12,7 @@
 #include "fontIds.h"
 
 namespace {
-constexpr int FONTS[] = {SMALL_FONT_ID, UI_12_FONT_ID, BITTER_16_FONT_ID};
+constexpr int FONTS[] = {SMALL_FONT_ID, UI_12_FONT_ID, NOTOSERIF_16_FONT_ID};
 constexpr unsigned HOLD_MS = 600;
 }
 
