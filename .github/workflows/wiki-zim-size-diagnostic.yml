@@ -1,0 +1,101 @@
+name: Wiki ZIM decompression feasibility
+
+on:
+  push:
+    branches: [wiki-x4-beta]
+    paths:
+      - '.github/workflows/wiki-zim-size-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: python -m pip install 'zstandard==0.23.0'
+      - name: Download representative current Kiwix ZIMs
+        run: |
+          set -euo pipefail
+          curl -fL --retry 4 -o /tmp/ray-mini.zim https://download.kiwix.org/zim/wikipedia/wikipedia_en_ray-charles_mini_2026-05.zim
+          curl -fL --retry 4 -o /tmp/ray-nopic.zim https://download.kiwix.org/zim/wikipedia/wikipedia_en_ray-charles_nopic_2026-05.zim
+      - name: Measure decompressed clusters and effective window floor
+        run: |
+          python - <<'PY' | tee wiki-zim-size-diagnostic.txt
+          import hashlib, io, json, struct
+          from pathlib import Path
+          import zstandard as zstd
+
+          MAGIC=0x044D495A
+          def u32(b,o): return struct.unpack_from('<I',b,o)[0]
+          def u64(b,o): return struct.unpack_from('<Q',b,o)[0]
+          def window_descriptor_for_power_of_two(size):
+              log=size.bit_length()-1
+              assert 1<<log == size and 10 <= log <= 41
+              return (log-10)<<3
+          TARGETS=[32<<10,64<<10,128<<10,256<<10,512<<10,1<<20,2<<20,4<<20,8<<20]
+
+          def decompress_bytes(frame):
+              dctx=zstd.ZstdDecompressor()
+              with dctx.stream_reader(io.BytesIO(frame)) as r:
+                  chunks=[]
+                  while True:
+                      b=r.read(65536)
+                      if not b: break
+                      chunks.append(b)
+              return b''.join(chunks)
+
+          def inspect(path):
+              p=Path(path); data=p.read_bytes(); h=data[:80]
+              assert u32(h,0)==MAGIC
+              n=u32(h,28); ptr=u64(h,48); checksum=u64(h,72) or len(data)
+              offsets=list(struct.unpack_from('<'+'Q'*n,data,ptr))
+              rows=[]
+              for i,off in enumerate(offsets):
+                  end=offsets[i+1] if i+1<n else checksum
+                  info=data[off]
+                  comp=info&0x0f
+                  row={'cluster':i,'compression':comp,'compressed_bytes':end-off-1}
+                  if comp==5:
+                      frame=bytearray(data[off+1:end])
+                      params=zstd.get_frame_parameters(frame[:64])
+                      original=decompress_bytes(bytes(frame))
+                      row['advertised_window']=params.window_size
+                      row['decompressed_bytes']=len(original)
+                      row['decompressed_sha256']=hashlib.sha256(original).hexdigest()
+                      fhd=frame[4]
+                      single_segment=bool(fhd & 0x20)
+                      row['single_segment']=single_segment
+                      successful=[]
+                      if not single_segment:
+                          original_wd=frame[5]
+                          for target in TARGETS:
+                              patched=bytearray(frame)
+                              patched[5]=window_descriptor_for_power_of_two(target)
+                              try:
+                                  out=decompress_bytes(bytes(patched))
+                                  if out==original: successful.append(target)
+                              except Exception:
+                                  pass
+                          frame[5]=original_wd
+                      row['smallest_patched_window_that_decodes_identically']=min(successful) if successful else None
+                  rows.append(row)
+                  print(p.name,json.dumps(row,sort_keys=True))
+              report={'file':p.name,'clusters':rows}
+              return report
+
+          reports=[inspect('/tmp/ray-mini.zim'),inspect('/tmp/ray-nopic.zim')]
+          Path('wiki-zim-size-diagnostic.json').write_text(json.dumps(reports,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wiki-zim-size-diagnostic
+          path: |
+            wiki-zim-size-diagnostic.txt
+            wiki-zim-size-diagnostic.json
+          if-no-files-found: error
