@@ -11,6 +11,7 @@ import struct
 import subprocess
 import sys
 import tarfile
+from wiki_harden import harden
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / '.pio/build/wiki_x4_beta'
@@ -64,6 +65,9 @@ def partitions(data):
     return result
 
 def main():
+    # The first malformed-input fuzz pass exposed a real upstream decoder bug.
+    # Never publish a candidate built without the reviewed source fix.
+    harden(check_only=True)
     image = (BUILD / 'firmware.bin').read_bytes()
     info = inspect(image)
     table = partitions((BUILD / 'partitions.bin').read_bytes())
@@ -72,7 +76,6 @@ def main():
     first = next((p for p in apps if p['label'] == 'app0'), None)
     if not first or first['offset'] != 0x10000 or first['size'] != 0x640000:
         raise ValueError('Unexpected build partition layout')
-    # Exercise the checker against a deliberately corrupted copy too.
     broken = bytearray(image); broken[256] ^= 1
     try: inspect(bytes(broken))
     except ValueError: pass
@@ -82,27 +85,29 @@ def main():
     log = subprocess.run([sys.executable, '-m', 'esptool', 'image-info', str(BUILD / 'firmware.bin')],
         check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout
     (OUT / 'image-info.txt').write_text(log)
+    source_names = [str(path.relative_to(ROOT)) for path in sorted((ROOT/'src/activities/wiki').glob('*')) if path.is_file()]
+    source_names += ['src/activities/ActivityManager.h', 'src/activities/home/HomeActivity.h',
+        'src/activities/home/HomeActivity.cpp', 'lib/uzlib/src/tinflate.c', 'platformio.local.ini',
+        'scripts/wiki_integrate.py', 'scripts/wiki_harden.py', 'scripts/wiki_package.py',
+        'scripts/wiki_host_tests.py', 'scripts/wiki_native_verify.py']
+    source_hashes = {name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in source_names}
     manifest = {'artifact': NAME, 'image': info, 'build_partitions': table,
         'crosspoint_base': '54337e6d73fc628f4ba523ddc89a743ca8c6e4c5',
         'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
         'submodules': subprocess.check_output(['git', 'submodule', 'status', '--recursive'], cwd=ROOT, text=True).strip(),
         'github_run_id': os.getenv('GITHUB_RUN_ID'), 'hardware_tested': False,
         'format': 'WCDB; not ZIM', 'image_kind': 'application-only, not a merged full-flash image',
-        'device_partition_layout_verified': False}
+        'device_partition_layout_verified': False,
+        'compiled_and_supporting_source_sha256': source_hashes,
+        'decoder_negative_symbol_bounds_fix_verified': True}
     (OUT / 'build-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    for name in ['WIKI_BETA.md', 'LICENSE', 'wiki-host-tests.log', 'wiki-build.log', 'wiki-real-pack-report.json']:
+    for name in ['WIKI_BETA.md', 'WIKI_VALIDATION.md', 'LICENSE', 'wiki-host-tests.log', 'wiki-build.log', 'wiki-real-pack-report.json']:
         path = ROOT / name
         if path.is_file(): shutil.copy2(path, OUT / name)
     (OUT / 'build-dependencies.txt').write_text(subprocess.check_output([sys.executable, '-m', 'pip', 'freeze'], text=True))
-    # Share only changed source, not bundled font files or upstream font assets.
+    # Include all modified C/C++ source, with original notices, not font assets.
     with tarfile.open(OUT / 'wiki-changed-source.tar.gz', 'w:gz') as archive:
-        for path in sorted((ROOT / 'src/activities/wiki').glob('*')):
-            if path.is_file(): archive.add(path, arcname=str(path.relative_to(ROOT)))
-        for name in ['src/activities/ActivityManager.h', 'src/activities/home/HomeActivity.h',
-                     'src/activities/home/HomeActivity.cpp', 'platformio.local.ini', 'scripts/wiki_integrate.py',
-                     'scripts/wiki_package.py', 'scripts/wiki_host_tests.py']:
-            path = ROOT / name
-            if path.is_file(): archive.add(path, arcname=name)
+        for name in source_names: archive.add(ROOT/name, arcname=name)
     sums = []
     for path in sorted(OUT.iterdir()):
         if path.is_file(): sums.append(hashlib.sha256(path.read_bytes()).hexdigest() + '  ' + path.name)
