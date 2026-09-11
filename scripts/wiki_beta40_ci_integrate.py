@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+# Build request: corrected chunk06 is now pinned on wiki-x4-beta.
 import base64
 import hashlib
 import json
