@@ -6,7 +6,7 @@ on:
     paths:
       - '.github/workflows/wiki-x4-beta.yml'
       - 'wiki-build-request.txt'
-      - 'wiki-beta3-overlay.tar.gz'
+      - 'wiki-beta3-overlay.b64.part*'
   workflow_dispatch:
 
 permissions:
@@ -47,11 +47,20 @@ jobs:
           python scripts/wiki_integrate.py
           python scripts/wiki_beta2_integrate.py
           git diff --check
-      - name: Verify and apply reviewed Wiki beta 3 overlay
+      - name: Reconstruct, verify and apply reviewed Wiki beta 3 overlay
         run: |
           set -euo pipefail
+          cat wiki-beta3-overlay.b64.part00 \
+              wiki-beta3-overlay.b64.part01 \
+              wiki-beta3-overlay.b64.part02 \
+              wiki-beta3-overlay.b64.part03 \
+              wiki-beta3-overlay.b64.part04 \
+              wiki-beta3-overlay.b64.part05 \
+              wiki-beta3-overlay.b64.part06 \
+            | tr -d '\r\n' | base64 -d > /tmp/wiki-beta3-overlay.tar.gz
+          echo "67d274746aae27b4d58c5a47e55b16f83eb43112e2cb7b0d3fd877b4a9cc3a2e  /tmp/wiki-beta3-overlay.tar.gz" | sha256sum -c -
           rm -rf /tmp/wiki-beta3-overlay && mkdir -p /tmp/wiki-beta3-overlay
-          tar -xzf wiki-beta3-overlay.tar.gz -C /tmp/wiki-beta3-overlay
+          tar -xzf /tmp/wiki-beta3-overlay.tar.gz -C /tmp/wiki-beta3-overlay
           python - <<'PY'
           import hashlib, json, shutil
           from pathlib import Path
