@@ -1,0 +1,136 @@
+name: Wiki ZIM format diagnostic
+
+on:
+  push:
+    branches: [wiki-x4-beta]
+    paths:
+      - '.github/workflows/wiki-zim-diagnostic.yml'
+      - 'wiki-zim-diagnostic-request.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-zim:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install host Zstandard inspector
+        run: python -m pip install 'zstandard==0.23.0'
+      - name: Download current small Kiwix Wikipedia ZIMs
+        run: |
+          set -euo pipefail
+          curl -fL --retry 4 --retry-delay 2 -o /tmp/ray-mini.zim \
+            https://download.kiwix.org/zim/wikipedia/wikipedia_en_ray-charles_mini_2026-05.zim
+          curl -fL --retry 4 --retry-delay 2 -o /tmp/ray-nopic.zim \
+            https://download.kiwix.org/zim/wikipedia/wikipedia_en_ray-charles_nopic_2026-05.zim
+          ls -lh /tmp/ray-*.zim
+      - name: Inspect ZIM headers, title listing and Zstd windows
+        run: |
+          python - <<'PY' | tee wiki-zim-diagnostic.txt
+          import json, os, struct
+          from pathlib import Path
+          import zstandard as zstd
+
+          MAGIC = 0x044D495A
+
+          def u16(b,o): return struct.unpack_from('<H',b,o)[0]
+          def u32(b,o): return struct.unpack_from('<I',b,o)[0]
+          def u64(b,o): return struct.unpack_from('<Q',b,o)[0]
+
+          def read_dirent(f, offset):
+              f.seek(offset)
+              head=f.read(16)
+              if len(head)<12: raise ValueError('short dirent')
+              mime=struct.unpack_from('<H',head,0)[0]
+              extra=head[2]
+              ns=chr(head[3])
+              version=struct.unpack_from('<I',head,4)[0]
+              if mime==0xffff:
+                  target=struct.unpack_from('<I',head,8)[0]
+                  fixed=12
+                  cluster=blob=None
+              else:
+                  cluster=struct.unpack_from('<I',head,8)[0]
+                  blob=struct.unpack_from('<I',head,12)[0]
+                  target=None
+                  fixed=16
+              f.seek(offset+fixed)
+              def readz(limit=32768):
+                  out=bytearray()
+                  while len(out)<limit:
+                      c=f.read(1)
+                      if not c: raise ValueError('unterminated dirent string')
+                      if c==b'\0': return out.decode('utf-8','replace')
+                      out.extend(c)
+                  raise ValueError('dirent string too long')
+              path=readz(); title=readz()
+              if extra: f.read(extra)
+              return dict(mime=mime,ns=ns,version=version,target=target,cluster=cluster,blob=blob,path=path,title=title)
+
+          def inspect(path):
+              p=Path(path)
+              with p.open('rb') as f:
+                  h=f.read(80)
+                  magic,major,minor=struct.unpack_from('<IHH',h,0)
+                  if magic!=MAGIC: raise ValueError('bad ZIM magic')
+                  article_count=u32(h,24); cluster_count=u32(h,28)
+                  path_ptr=u64(h,32); title_idx=u64(h,40); cluster_ptr=u64(h,48); mime_pos=u64(h,56); checksum_pos=u64(h,72)
+                  f.seek(path_ptr); path_offsets=list(struct.unpack('<'+'Q'*article_count,f.read(8*article_count)))
+                  f.seek(cluster_ptr); cluster_offsets=list(struct.unpack('<'+'Q'*cluster_count,f.read(8*cluster_count)))
+                  listing=None
+                  namespace_counts={}
+                  for idx,off in enumerate(path_offsets):
+                      d=read_dirent(f,off)
+                      namespace_counts[d['ns']]=namespace_counts.get(d['ns'],0)+1
+                      if d['ns']=='X' and d['path']=='listing/titleOrdered/v1':
+                          listing=dict(index=idx,**d)
+                  windows=[]; types={}; errors=[]
+                  file_size=p.stat().st_size
+                  for i,off in enumerate(cluster_offsets):
+                      end = cluster_offsets[i+1] if i+1<len(cluster_offsets) else checksum_pos if checksum_pos else file_size
+                      f.seek(off); info=f.read(1)
+                      if not info: errors.append({'cluster':i,'error':'missing info'}); continue
+                      ci=info[0]; comp=ci & 0x0f; ext=bool(ci & 0x10)
+                      types[str(comp)]=types.get(str(comp),0)+1
+                      row={'cluster':i,'offset':off,'compressed_bytes':max(0,end-off-1),'compression':comp,'extended':ext}
+                      if comp==5:
+                          # get_frame_parameters only needs enough bytes for frame header.
+                          prefix=f.read(min(64,max(0,end-off-1)))
+                          try:
+                              fp=zstd.get_frame_parameters(prefix)
+                              row.update(window_size=fp.window_size,content_size=fp.content_size,dict_id=fp.dict_id,has_checksum=fp.has_checksum)
+                              windows.append(fp.window_size)
+                          except Exception as e:
+                              row['frame_error']=repr(e); errors.append(row)
+                      if i<12 or comp==5 and row.get('window_size',0)>131072:
+                          print('CLUSTER',p.name,json.dumps(row,sort_keys=True))
+                  report={
+                      'file':p.name,'bytes':file_size,'version':[major,minor],
+                      'article_count':article_count,'cluster_count':cluster_count,
+                      'path_ptr_pos':path_ptr,'title_idx_pos':title_idx,'cluster_ptr_pos':cluster_ptr,
+                      'mime_list_pos':mime_pos,'checksum_pos':checksum_pos,
+                      'namespace_counts':namespace_counts,'title_listing':listing,
+                      'compression_counts':types,
+                      'zstd_windows': {'count':len(windows),'min':min(windows) if windows else None,'max':max(windows) if windows else None,'unique':sorted(set(windows))},
+                      'errors':errors[:20],
+                  }
+                  print('REPORT',json.dumps(report,sort_keys=True))
+                  return report
+
+          reports=[inspect('/tmp/ray-mini.zim'),inspect('/tmp/ray-nopic.zim')]
+          Path('wiki-zim-diagnostic.json').write_text(json.dumps(reports,indent=2)+'\n')
+          PY
+      - name: Upload diagnostic report
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-zim-diagnostic
+          path: |
+            wiki-zim-diagnostic.txt
+            wiki-zim-diagnostic.json
+          if-no-files-found: error
