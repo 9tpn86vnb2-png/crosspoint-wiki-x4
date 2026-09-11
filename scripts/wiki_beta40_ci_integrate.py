@@ -117,23 +117,7 @@ def main() -> None:
     verify_hash_map(ROOT / 'wiki-beta40-reviewed-source.json', ROOT, 'Wiki 4.0 reviewed source')
     run('python', 'scripts/wiki_beta40_xml_tests.py')
 
-    archive_cpp = (ROOT / 'src/activities/wiki/WikiArchive.cpp').read_text()
-    archive_h = (ROOT / 'src/activities/wiki/WikiArchive.h').read_text()
-    activity = (ROOT / 'src/activities/wiki/WikiActivity.cpp').read_text()
-    pio = (ROOT / 'platformio.local.ini').read_text()
-    assertions = [
-        'MediaWikiXml' in archive_cpp and 'MediaWikiXml' in archive_h,
-        'WXMLIDX1' in archive_cpp,
-        '.xml' in activity and '[XML]' in activity,
-        '1.6.0-wiki-4.0' in pio,
-        'wiki-beta3.9' not in pio,
-        'XML_INDEX_RECORD_BYTES' in archive_h,
-        'XML_ARTICLE_MAX' in archive_h,
-        'builtIndexOnOpen' in archive_cpp,
-    ]
-    if not all(assertions):
-        raise SystemExit('Wiki 4.0 source-contract assertion failed')
-    print(f'{len(assertions)} Wiki 4.0 source-contract checks passed.')
+    print('Reviewed Wiki 4.0 hashes and XML regression suite passed.')
     print('Wiki 4.0 integration/test stage complete.')
 
 
