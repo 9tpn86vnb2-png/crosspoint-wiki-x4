@@ -1,0 +1,1 @@
+Build Wiki beta 3.7 for the original ESP32-C3 Xteink X4/X3.
