@@ -74,6 +74,18 @@ jobs:
           python -m pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
           python -m pip install -r requirements.txt
           python -m pip install 'littlefs-python>=0.16.0' 'fatfs-ng>=0.1.14' 'pyyaml>=6.0.2' 'rich-click>=1.8.6' 'zopfli>=0.2.2' 'intelhex>=2.3.0' 'rich>=14.0.0' 'urllib3<2' 'cryptography>=45.0.3' 'certifi>=2025.8.3' 'ecdsa>=0.19.1' 'bitstring>=4.3.1' 'reedsolo>=1.5.3,<1.8' 'esp-idf-size>=2.0.0' 'esp-coredump>=1.14.0' 'esptool>=5,<6'
+      - name: Refresh source-dependent SDK metadata
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          # The upstream cache key contains sdkconfig but not PROJECT_VER.
+          # Removing its request marker makes the reviewed upstream pre-script
+          # rebuild this chip's SDK from the original template. Do not patch
+          # the resulting firmware bytes or accept a stale descriptor instead.
+          marker = Path.home() / '.platformio/packages/framework-arduinoespressif32-libs/esp32c3/sdkconfig.crosspoint'
+          marker.unlink(missing_ok=True)
+          print('Invalidated the source-dependent ESP32-C3 SDK metadata cache.')
+          PY
       - name: Build original X4 application only
         id: compile
         run: |
