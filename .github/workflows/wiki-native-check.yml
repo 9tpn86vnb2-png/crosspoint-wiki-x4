@@ -1,0 +1,37 @@
+name: Wiki native decoder verification
+on:
+  push:
+    branches: [wiki-x4-beta]
+    paths:
+      - '.github/workflows/wiki-native-check.yml'
+      - 'scripts/wiki_native_verify.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-decoder:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install host reference decoder
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+      - name: Verify firmware decoder on published Wikipedia data
+        run: |
+          set -euo pipefail
+          python scripts/wiki_native_verify.py 2>&1 | tee wiki-native-verification.log
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-native-verification
+          path: |
+            wiki-native-verification.log
+            wiki-real-pack-report.json
+            scripts/wiki_native_verify.py
+          if-no-files-found: error
