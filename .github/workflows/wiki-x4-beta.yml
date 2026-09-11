@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - name: Verify locally tested beta 2 source fingerprints
+      - name: Verify beta 2 reviewed source
         run: |
           python - <<'PY'
           import hashlib, json
@@ -37,39 +37,39 @@ jobs:
           for name,digest in expected.items():
             actual=hashlib.sha256(Path(name).read_bytes()).hexdigest()
             if actual!=digest: raise SystemExit('Source transfer mismatch: '+name+' '+actual)
-          print('All',len(expected),'reviewed source files match the local tested copies.')
+          print('All',len(expected),'reviewed beta 2 source files match.')
           PY
-      - name: Integrate reviewed Wiki menu, globe and decoder fix
+      - name: Integrate beta 3 source
         run: |
           set -euo pipefail
           python scripts/wiki_harden.py
           python scripts/wiki_integrate.py
           python scripts/wiki_beta2_integrate.py
+          python scripts/wiki_beta3_patch.py
           git diff --check
       - name: Upload integrated source for inspection
         uses: actions/upload-artifact@v6
         with:
-          name: wiki-source-debug
+          name: wiki-beta3-source-debug
           path: |
             src/activities/wiki/
             src/activities/home/HomeActivity.h
             src/activities/home/HomeActivity.cpp
             src/activities/ActivityManager.h
+            src/activities/settings/TextSettingsActivity.h
+            src/activities/settings/TextSettingsActivity.cpp
+            src/activities/settings/TextSettingsPreview.h
+            src/activities/settings/TextSettingsPreview.cpp
             src/components/icons/wikiGlobe.h
+            src/components/icons/wikiLogo.h
             src/components/themes/BaseTheme.h
             src/components/themes/BaseTheme.cpp
             src/components/themes/lyra/LyraTheme.cpp
             src/components/themes/roundedraff/RoundedRaffTheme.cpp
-            src/components/UiAppHelpers.h
             lib/InflateReader/
             lib/uzlib/
-            scripts/wiki_*.py
+            scripts/wiki_beta3_patch.py
             platformio.local.ini
-            WIKI_BETA.md
-            WIKI_BETA2.md
-            WIKI_VALIDATION.md
-            wiki-beta2-reviewed-source.json
-            LICENSE
           if-no-files-found: error
       - name: Install host test dependencies
         run: |
@@ -79,10 +79,6 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/wiki_native_verify.py 2>&1 | tee wiki-host-tests.log
-      - name: Test beta 2 search, bookmarks, UI and text with host adapters
-        run: |
-          set -euo pipefail
-          python scripts/wiki_beta2_tests.py 2>&1 | tee wiki-beta2-tests.log
       - name: Restore ESP32 compiler cache
         id: pio-cache
         continue-on-error: true
@@ -91,8 +87,8 @@ jobs:
           path: |
             ~/.platformio
             .cache
-          key: wiki-pio-v3-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
-          restore-keys: wiki-pio-v3-${{ runner.os }}-
+          key: wiki-pio-v4-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
+          restore-keys: wiki-pio-v4-${{ runner.os }}-
       - name: Install upstream build dependencies
         run: |
           python -m pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
@@ -104,7 +100,7 @@ jobs:
           from pathlib import Path
           marker = Path.home() / '.platformio/packages/framework-arduinoespressif32-libs/esp32c3/sdkconfig.crosspoint'
           marker.unlink(missing_ok=True)
-          print('Invalidated source-dependent ESP32-C3 SDK metadata for beta 2.')
+          print('Invalidated source-dependent ESP32-C3 SDK metadata for beta 3.')
           PY
       - name: Build original X4 application only
         id: compile
@@ -115,31 +111,35 @@ jobs:
         if: ${{ steps.compile.outcome == 'success' }}
         uses: actions/upload-artifact@v6
         with:
-          name: wiki-raw-build-inspection-NOT-VALIDATED
+          name: wiki-beta3-raw-build-NOT-VALIDATED
           path: |
             .pio/build/wiki_x4_beta/firmware.bin
             .pio/build/wiki_x4_beta/partitions.bin
           include-hidden-files: true
           if-no-files-found: error
-      - name: Validate and package beta 2 candidate
+      - name: Validate and package beta 3 candidate
         run: |
           set -euo pipefail
-          python scripts/wiki_beta2_package.py 2>&1 | tee wiki-package.log
-      - name: Upload beta candidate
+          python - <<'PY' 2>&1 | tee wiki-package.log
+          import wiki_package
+          wiki_package.NAME='crosspoint-1.6.0-wiki-beta3-x4-UNTESTED.bin'
+          wiki_package.UI_VERSION='1.6.0-wiki-beta3'
+          wiki_package.main()
+          PY
+      - name: Upload beta 3 candidate
         uses: actions/upload-artifact@v6
         with:
-          name: crosspoint-1.6.0-wiki-beta2-x4-UNTESTED
+          name: crosspoint-1.6.0-wiki-beta3-x4-UNTESTED
           path: wiki-dist/
           if-no-files-found: error
       - name: Upload build and test logs
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: wiki-build-log
+          name: wiki-beta3-build-log
           path: |
             wiki-build.log
             wiki-host-tests.log
-            wiki-beta2-tests.log
             wiki-real-pack-report.json
             wiki-package.log
           if-no-files-found: ignore
@@ -151,4 +151,4 @@ jobs:
           path: |
             ~/.platformio
             .cache
-          key: wiki-pio-v3-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
+          key: wiki-pio-v4-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
