@@ -1,0 +1,177 @@
+name: X4 Wiki 4.1 independent orientation
+
+on:
+  push:
+    branches: [wiki-x4-beta]
+    paths:
+      - '.github/workflows/wiki-x4-beta41.yml'
+      - 'scripts/wiki_beta41_integrate.py'
+      - 'scripts/wiki_beta41_tests.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wiki-x4-beta41-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install host test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zlib1g-dev
+
+      - name: Reconstruct reviewed Wiki 4.0 source and XML tests
+        run: |
+          set -euo pipefail
+          python scripts/wiki_beta40_ci_integrate.py 2>&1 | tee wiki-beta40-integration.log
+
+      - name: Apply and test Wiki 4.1 independent orientation
+        run: |
+          set -euo pipefail
+          python scripts/wiki_beta41_integrate.py 2>&1 | tee wiki-beta41-integration.log
+          git diff --check
+          python scripts/wiki_beta41_tests.py 2>&1 | tee wiki-beta41-tests.log
+
+      - name: Upload Wiki 4.1 integrated source for inspection
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-beta41-source-debug
+          path: |
+            src/activities/wiki/
+            scripts/wiki_beta40_xml_tests.py
+            scripts/wiki_beta40_ci_integrate.py
+            scripts/wiki_beta41_integrate.py
+            scripts/wiki_beta41_tests.py
+            platformio.local.ini
+            WIKI_BETA40.md
+            WIKI_BETA41.md
+            wiki-beta40-reviewed-source.json
+            wiki-beta41-reviewed-source.json
+            LICENSE
+          if-no-files-found: error
+
+      - name: Restore ESP32 compiler cache
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .cache
+          key: wiki-pio-v3-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
+          restore-keys: wiki-pio-v3-${{ runner.os }}-
+
+      - name: Install upstream build dependencies
+        run: |
+          python -m pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+          python -m pip install -r requirements.txt
+          python -m pip install 'littlefs-python>=0.16.0' 'fatfs-ng>=0.1.14' 'pyyaml>=6.0.2' 'rich-click>=1.8.6' 'zopfli>=0.2.2' 'intelhex>=2.3.0' 'rich>=14.0.0' 'urllib3<2' 'cryptography>=45.0.3' 'certifi>=2025.8.3' 'ecdsa>=0.19.1' 'bitstring>=4.3.1' 'reedsolo>=1.5.3,<1.8' 'esp-idf-size>=2.0.0' 'esp-coredump>=1.14.0' 'esptool>=5,<6'
+
+      - name: Refresh source-dependent SDK metadata
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          (Path.home()/'.platformio/packages/framework-arduinoespressif32-libs/esp32c3/sdkconfig.crosspoint').unlink(missing_ok=True)
+          print('Invalidated source-dependent ESP32-C3 SDK metadata for Wiki 4.1.')
+          PY
+
+      - name: Build original X4 application only
+        id: compile
+        run: |
+          set -euo pipefail
+          pio run -e wiki_x4_beta 2>&1 | tee wiki-build.log
+
+      - name: Retain raw build for independent inspection
+        if: ${{ steps.compile.outcome == 'success' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-beta41-raw-build-inspection-NOT-VALIDATED
+          path: |
+            .pio/build/wiki_x4_beta/firmware.bin
+            .pio/build/wiki_x4_beta/partitions.bin
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Validate and package Wiki 4.1 candidate
+        run: |
+          set -euo pipefail
+          PYTHONPATH=scripts python - <<'PY' 2>&1 | tee wiki-package.log
+          import hashlib,json,shutil,tarfile
+          from pathlib import Path
+          import wiki_package as base
+          base.NAME='crosspoint-1.6.0-wiki-4.1-x4-UNTESTED.bin'
+          base.UI_VERSION='1.6.0-wiki-4.1'
+          base.main()
+          root,out=base.ROOT,base.OUT
+          manifest=json.loads((out/'build-manifest.json').read_text())
+          hashes=manifest['compiled_and_supporting_source_sha256']
+          for name in [
+              'scripts/wiki_beta40_xml_tests.py','scripts/wiki_beta40_ci_integrate.py',
+              'scripts/wiki_beta41_integrate.py','scripts/wiki_beta41_tests.py',
+              'WIKI_BETA40.md','WIKI_BETA41.md',
+              'wiki-beta40-reviewed-source.json','wiki-beta41-reviewed-source.json']:
+              hashes[name]=hashlib.sha256((root/name).read_bytes()).hexdigest()
+          manifest.update(
+            features=['Wiki 4.0 MediaWiki XML/WCDB feature set','Independent Wiki reading orientation','Dedicated Wiki orientation submenu','Landscape button-guide removal'],
+            wiki_library_formats=['WCDB .cdb','MediaWiki XML .xml'],
+            wiki_orientation_storage='wikibeta/orient',
+            wiki_orientation_independent=True,
+            wiki_orientation_menu=['Portrait','Landscape CW','Inverted','Landscape CCW'],
+            wiki_orientation_migration='If no Wiki orientation exists, seed once from the current CrossPoint reader orientation, then persist independently',
+            native_reader_orientation_modified_by_wiki=False,
+            wiki_menu_orientation='Portrait',
+            wiki_landscape_button_hints='Hidden for Landscape CW/CCW article views',
+            xml_supported=True,
+            xml_compressed_supported=False,
+            zim_supported=False,
+            hardware_tested=False)
+          (out/'build-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          shutil.copy2(root/'WIKI_BETA40.md',out/'WIKI_BETA40.md')
+          shutil.copy2(root/'WIKI_BETA41.md',out/'WIKI_BETA41.md')
+          with tarfile.open(out/'wiki-changed-source.tar.gz','w:gz') as tar:
+              for name in sorted(hashes):
+                  p=root/name
+                  if p.is_file(): tar.add(p,arcname=name)
+          sums=[]
+          for p in sorted(out.iterdir()):
+              if p.is_file() and p.name!='SHA256SUMS.txt':
+                  sums.append(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name)
+          (out/'SHA256SUMS.txt').write_text('\n'.join(sums)+'\n')
+          print('Wiki 4.1 package finalized with',len(hashes),'source fingerprints.')
+          PY
+
+      - name: Upload Wiki 4.1 candidate
+        uses: actions/upload-artifact@v6
+        with:
+          name: crosspoint-1.6.0-wiki-4.1-x4-UNTESTED
+          path: wiki-dist/
+          if-no-files-found: error
+
+      - name: Upload build and test logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-beta41-build-log
+          path: |
+            wiki-beta40-integration.log
+            wiki-beta41-integration.log
+            wiki-beta41-tests.log
+            wiki-build.log
+            wiki-package.log
+            wiki-real-pack-report.json
+          if-no-files-found: ignore
