@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Static validation for the Wiki 4.3 Unicode-symbol integration."""
+# Build trigger: validate the complete v2.003 symbol pipeline on original X4.
 from pathlib import Path
 from fontTools.ttLib import TTFont
 
