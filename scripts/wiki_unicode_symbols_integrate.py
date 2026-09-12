@@ -16,19 +16,12 @@ BOLD = SOURCE_DIR / "NotoSansSymbols-Bold.ttf"
 SIZES = (12, 14, 16, 18)
 
 
-def replace_once(path: Path, old: str, new: str) -> None:
-    text = path.read_text(encoding="utf-8")
-    if text.count(old) != 1:
-        raise RuntimeError(f"{path.relative_to(ROOT)}: patch anchor count for {old[:50]!r} is {text.count(old)}")
-    path.write_text(text.replace(old, new, 1), encoding="utf-8")
-
-
 def cmap_ranges(path: Path) -> list[tuple[int, int]]:
     tt = TTFont(path)
-    cps = sorted((tt.getBestCmap() or {}).keys())
+    cps = sorted(cp for cp in (tt.getBestCmap() or {}).keys() if cp >= 0x20 and cp != 0x7F)
     tt.close()
     if not cps:
-        raise RuntimeError(f"No cmap in {path}")
+        raise RuntimeError(f"No printable cmap in {path}")
     out = []
     start = prev = cps[0]
     for cp in cps[1:]:
@@ -50,10 +43,10 @@ def generate() -> None:
         for style, source in (("regular", REGULAR), ("bold", BOLD)):
             name = f"notosymbols_{size}_{style}"
             target = FONT_DIR / f"{name}.h"
-            cmd = [
-                sys.executable, str(converter), name, str(size), str(source),
-                "--compress", "--zopfli", *interval_args,
-            ]
+            # Keep the symbol fallback 1-bit. CrossPoint's byte-aligned font
+            # compression requires 2-bit input; for this fallback family a
+            # raw 1-bit bitmap is both simpler and flash-conscious.
+            cmd = [sys.executable, str(converter), name, str(size), str(source), *interval_args]
             print("Generating", target.relative_to(ROOT))
             with target.open("w", encoding="utf-8", newline="\n") as f:
                 subprocess.run(cmd, cwd=converter.parent, stdout=f, check=True)
