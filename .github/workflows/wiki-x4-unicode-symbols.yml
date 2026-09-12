@@ -1,0 +1,171 @@
+name: X4 Wiki 4.3 Unicode symbols
+
+on:
+  push:
+    branches: [wiki-x4-unicode-symbols]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wiki-x4-unicode-symbols-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install host test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zlib1g-dev
+
+      - name: Reconstruct reviewed Wiki 4.3 source
+        run: |
+          set -euo pipefail
+          python scripts/wiki_beta40_ci_integrate.py 2>&1 | tee wiki-beta40-integration.log
+          python scripts/wiki_beta41_integrate.py 2>&1 | tee wiki-beta41-integration.log
+          python scripts/wiki_beta41_tests.py 2>&1 | tee wiki-beta41-tests.log
+          python scripts/wiki_beta42_integrate.py 2>&1 | tee wiki-beta42-integration.log
+          python scripts/wiki_beta42_tests.py 2>&1 | tee wiki-beta42-tests.log
+          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
+            -Isrc/activities/wiki \
+            scripts/wiki_beta42_typeset_host.cpp src/activities/wiki/WikiText.cpp \
+            -o /tmp/wiki-beta42-typeset-host
+          ASAN_OPTIONS=detect_leaks=1 /tmp/wiki-beta42-typeset-host 2>&1 | tee wiki-beta42-host.log
+          python scripts/wiki_beta43_integrate.py 2>&1 | tee wiki-beta43-integration.log
+          python scripts/wiki_beta43_tests.py 2>&1 | tee wiki-beta43-tests.log
+          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
+            -Isrc/activities/wiki \
+            scripts/wiki_beta43_typeset_host.cpp src/activities/wiki/WikiText.cpp \
+            -o /tmp/wiki-beta43-typeset-host
+          ASAN_OPTIONS=detect_leaks=1 /tmp/wiki-beta43-typeset-host 2>&1 | tee wiki-beta43-host.log
+          git diff --check
+
+      - name: Restore ESP32 compiler cache
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .cache
+          key: wiki-unicode-pio-v1-${{ runner.os }}-${{ hashFiles('platformio.ini', 'platformio.local.ini') }}
+          restore-keys: wiki-unicode-pio-v1-${{ runner.os }}-
+
+      - name: Install build and font dependencies
+        run: |
+          python -m pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+          python -m pip install -r requirements.txt
+          python -m pip install 'littlefs-python>=0.16.0' 'fatfs-ng>=0.1.14' 'pyyaml>=6.0.2' 'rich-click>=1.8.6' 'zopfli>=0.2.2' 'intelhex>=2.3.0' 'rich>=14.0.0' 'urllib3<2' 'cryptography>=45.0.3' 'certifi>=2025.8.3' 'ecdsa>=0.19.1' 'bitstring>=4.3.1' 'reedsolo>=1.5.3,<1.8' 'esp-idf-size>=2.0.0' 'esp-coredump>=1.14.0' 'esptool>=5,<6'
+
+      - name: Prepare and integrate Noto Sans Symbols v2.003
+        run: |
+          set -euo pipefail
+          python scripts/prepare_unicode_symbols.py 2>&1 | tee unicode-symbol-source.log
+          python scripts/wiki_unicode_symbols_integrate.py 2>&1 | tee unicode-symbol-integration.log
+          python scripts/wiki_unicode_symbols_tests.py 2>&1 | tee unicode-symbol-tests.log
+          git diff --check
+
+      - name: Refresh source-dependent SDK metadata
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          (Path.home()/'.platformio/packages/framework-arduinoespressif32-libs/esp32c3/sdkconfig.crosspoint').unlink(missing_ok=True)
+          print('Invalidated source-dependent ESP32-C3 SDK metadata for Wiki 4.3 Unicode build.')
+          PY
+
+      - name: Build original X4 application only
+        id: compile
+        run: |
+          set -euo pipefail
+          pio run -e wiki_x4_beta 2>&1 | tee wiki-unicode-build.log
+
+      - name: Retain raw build for inspection
+        if: ${{ steps.compile.outcome == 'success' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-4.3-unicode-raw-build-NOT-HARDWARE-TESTED
+          path: |
+            .pio/build/wiki_x4_beta/firmware.bin
+            .pio/build/wiki_x4_beta/partitions.bin
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Validate and package Unicode candidate
+        run: |
+          set -euo pipefail
+          PYTHONPATH=scripts python - <<'PY' 2>&1 | tee wiki-unicode-package.log
+          import hashlib, json, shutil
+          from pathlib import Path
+          import wiki_package as base
+
+          base.NAME = 'crosspoint-1.6.0-wiki-4.3-unicode-x4-UNTESTED.bin'
+          base.UI_VERSION = '1.6.0-wiki-4.3'
+          base.main()
+          root, out = base.ROOT, base.OUT
+          manifest_path = out / 'build-manifest.json'
+          manifest = json.loads(manifest_path.read_text())
+          manifest.update(
+              unicode_symbol_support=True,
+              unicode_symbol_source='Noto Sans Symbols v2.003; Google Fonts pinned commit 809e4d8b8d7e9364a914909bb777679606c178b8; cmap verified against uploaded source',
+              unicode_symbol_cmap_count=1107,
+              unicode_symbol_cmap_sha256='52909156e74919f23c52ded660da993a46c3540daa399dd5e3ea1ef11ef2d9f6',
+              unicode_symbol_sizes_pt=[12, 14, 16, 18],
+              unicode_symbol_styles=['regular', 'bold'],
+              unicode_symbol_fallback='whole-token single-font fallback when primary lacks a glyph and the symbol family covers the complete token; preserves measure/draw parity',
+              hardware_tested=False,
+          )
+          src = root / 'lib/EpdFont/builtinFonts/source/NotoSansSymbols/OFL.txt'
+          shutil.copy2(src, out / 'OFL-NotoSansSymbols.txt')
+          for name in ['scripts/prepare_unicode_symbols.py', 'scripts/wiki_unicode_symbols_integrate.py', 'scripts/wiki_unicode_symbols_tests.py']:
+              manifest.setdefault('compiled_and_supporting_source_sha256', {})[name] = hashlib.sha256((root/name).read_bytes()).hexdigest()
+          manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
+          sums = []
+          for p in sorted(out.iterdir()):
+              if p.is_file() and p.name != 'SHA256SUMS.txt':
+                  sums.append(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name)
+          (out / 'SHA256SUMS.txt').write_text('\n'.join(sums) + '\n')
+          print('Wiki 4.3 Unicode package finalized.')
+          PY
+
+      - name: Upload Wiki 4.3 Unicode candidate
+        uses: actions/upload-artifact@v6
+        with:
+          name: crosspoint-1.6.0-wiki-4.3-unicode-x4-UNTESTED
+          path: wiki-dist/
+          if-no-files-found: error
+
+      - name: Upload build and test logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-4.3-unicode-build-logs
+          path: |
+            wiki-beta40-integration.log
+            wiki-beta41-integration.log
+            wiki-beta41-tests.log
+            wiki-beta42-integration.log
+            wiki-beta42-tests.log
+            wiki-beta42-host.log
+            wiki-beta43-integration.log
+            wiki-beta43-tests.log
+            wiki-beta43-host.log
+            unicode-symbol-source.log
+            unicode-symbol-integration.log
+            unicode-symbol-tests.log
+            wiki-unicode-build.log
+            wiki-unicode-package.log
+            wiki-real-pack-report.json
+          if-no-files-found: ignore
