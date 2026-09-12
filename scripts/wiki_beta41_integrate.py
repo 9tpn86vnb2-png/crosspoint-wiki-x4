@@ -5,15 +5,15 @@ import hashlib, json
 ROOT = Path(__file__).resolve().parents[1]
 
 BETA40_EXPECTED = {
-    'src/activities/wiki/WikiActivity.cpp': '099559e949c25028c262021d96f4467eabb920f2a8ce4a3c5ad4a79af46f6d0e',
-    'src/activities/wiki/WikiActivity.h': '6ae2b441e2eeaed991afacd70015035f7b2ed5fcfca05fa7cc112614e4ab9246',
-    'platformio.local.ini': '1762a188bfa88090764ab2b768f95c58a7c5b2ccec21d1e1386b87f904ce2d75',
-    'WIKI_BETA40.md': 'd340a684aa50bc721c115e211f7e1d5012c6d3332a6f694f1a2c6ae87ec513db',
+    'src/activities/wiki/WikiActivity.cpp': 'a9f85cfa4421e695df446524b1d53ab45bb9e7e5b7d96fad0366a23be44a07b6',
+    'src/activities/wiki/WikiActivity.h': '3d64ec2d0075447911469cffe41239692350a77d21fe0183f46e41f0544701f0',
+    'platformio.local.ini': '0b629afe38ec5ee1caf92cf877b8ff416cb07b8e844d1b2b5e65b1072c00e1c6',
+    'WIKI_BETA40.md': '6b7bbb9e01cde6e5a55813f829eee21f2270ed1f25cf9bc1c0cf1ed60360465e',
 }
 
 BETA41_EXPECTED = {
-    'src/activities/wiki/WikiActivity.cpp': '7b6aaaa0b94271cc2b2b3c4b7056c31d2dfdb9d0777d3023f2b18296ea5e4a68',
-    'src/activities/wiki/WikiActivity.h': '07d235274c6bbf118d075da597832e8df48598b25183c1723bdb8d4e4c6b4f63',
+    'src/activities/wiki/WikiActivity.cpp': '459e1647ebfa6347d1e2576a6c7f7078d631e641d89394cab09e69e3c913b3cb',
+    'src/activities/wiki/WikiActivity.h': 'eb0c9b69f670f2196fdf252be03a03f9501c40a91191ae602a788030e403a5d2',
     'platformio.local.ini': 'c38ee16d0eb98962928b4690ea42d05d367203b54b3685e8aeae5af9b0e9f8b2',
     'WIKI_BETA41.md': 'bd5867792571e45effef11309b291147002f929c5557e4e812237f79a0527eff',
 }
@@ -98,8 +98,8 @@ def main() -> None:
 
     platform_path = ROOT / 'platformio.local.ini'
     platform = platform_path.read_text()
-    platform = platform.replace('1.6.0-wiki-beta4.0', '1.6.0-wiki-4.1')
-    if platform.count('1.6.0-wiki-4.1') != 2 or 'beta4.0' in platform:
+    platform = platform.replace('1.6.0-wiki-4.0', '1.6.0-wiki-4.1')
+    if platform.count('1.6.0-wiki-4.1') != 2 or '1.6.0-wiki-4.0' in platform:
         raise SystemExit('version patch failed')
     platform_path.write_text(platform)
 
