@@ -1,4 +1,4 @@
-# Trigger the verified 4.3.4 workflow after registration on this branch.
+# Verified Wiki 4.3.4 build for original X4.
 name: X4 Wiki 4.3.4 verified build
 
 on:
@@ -6,7 +6,7 @@ on:
     branches: [wiki-x4-beta434-build]
     paths:
       - '.github/workflows/wiki-x4-beta434.yml'
-      - '.github/wiki434.patch.b64'
+      - '.github/wiki434.patch.0*'
   workflow_dispatch:
 
 permissions:
@@ -26,6 +26,21 @@ jobs:
           submodules: recursive
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Verify Wiki 4.3.4 patch transport
+        run: |
+          set -euo pipefail
+          echo 'b9350500cdb8397fd4aa98c802f1dfb5c9eb6f47218e5c06afef7a0956434518  .github/wiki434.patch.00' | sha256sum -c -
+          echo '272644e0ffad8fb8a013c4f39675793a860ec923ffd2fb1d87e096b0b1e6344f  .github/wiki434.patch.01' | sha256sum -c -
+          echo 'aa8939b605ac42826dc837185fc6a63f46afd323d9777c5b034cf2ab8c00472b  .github/wiki434.patch.02' | sha256sum -c -
+          echo '5d1b3c8445955dbac493ed0caaf9b35ae6b1c94432639c10c952de31ccd6b8e6  .github/wiki434.patch.03' | sha256sum -c -
+          echo '7324bccff47847f88ddea56a129664fe7dbcec679d25219e6ed63a3c2127a19b  .github/wiki434.patch.04' | sha256sum -c -
+          echo '5663ee99e0dc2f672eee4f381a2bb53c83b0adccc6f4ac2aa3586246e4886ba0  .github/wiki434.patch.05' | sha256sum -c -
+          cat .github/wiki434.patch.00 .github/wiki434.patch.01 .github/wiki434.patch.02 .github/wiki434.patch.03 .github/wiki434.patch.04 .github/wiki434.patch.05 > /tmp/wiki434.b64
+          base64 -d /tmp/wiki434.b64 > /tmp/wiki434.patch.gz
+          echo '3c02c94275023da70c486642f9e8e321d4f3d485b0602025062c16f1cb6c98db  /tmp/wiki434.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/wiki434.patch.gz > /tmp/wiki434.patch
+          echo 'a7571e11b2c4cd739a36d2665e3055433b191b52391f56cdb6b0e4375c471325  /tmp/wiki434.patch' | sha256sum -c -
 
       - uses: actions/setup-python@v6
         with:
@@ -86,10 +101,6 @@ jobs:
       - name: Apply verified Wiki 4.3.4 patch
         run: |
           set -euo pipefail
-          base64 -d .github/wiki434.patch.b64 > /tmp/wiki434.patch.gz
-          echo '3c02c94275023da70c486642f9e8e321d4f3d485b0602025062c16f1cb6c98db  /tmp/wiki434.patch.gz' | sha256sum -c -
-          gzip -dc /tmp/wiki434.patch.gz > /tmp/wiki434.patch
-          echo 'a7571e11b2c4cd739a36d2665e3055433b191b52391f56cdb6b0e4375c471325  /tmp/wiki434.patch' | sha256sum -c -
           git apply --check /tmp/wiki434.patch
           git apply /tmp/wiki434.patch
           git diff --check
