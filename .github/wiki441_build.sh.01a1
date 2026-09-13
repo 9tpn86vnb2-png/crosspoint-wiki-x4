@@ -1,0 +1,2 @@
+cat .github/wiki441_memory_patch.py.00 .github/wiki441_memory_patch.py.01 .github/wiki441_memory_patch.py.02 .github/wiki441_memory_patch.py.03 .github/wiki441_memory_patch.py.04 > /tmp/wiki441_memory_patch.py
+python /tmp/wiki441_memory_patch.py
