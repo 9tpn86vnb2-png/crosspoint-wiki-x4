@@ -86,7 +86,6 @@ jobs:
       - name: Apply verified Wiki 4.3.4 patch
         run: |
           set -euo pipefail
-          echo 'c71bdca6722cbbc18f4ba4a7b063602cc509fe38c0f8d7a3440f9d483f43647b  .github/wiki434.patch.b64' | sha256sum -c -
           base64 -d .github/wiki434.patch.b64 > /tmp/wiki434.patch.gz
           echo '3c02c94275023da70c486642f9e8e321d4f3d485b0602025062c16f1cb6c98db  /tmp/wiki434.patch.gz' | sha256sum -c -
           gzip -dc /tmp/wiki434.patch.gz > /tmp/wiki434.patch
