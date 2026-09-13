@@ -1,5 +1,19 @@
-name: W441
-on: workflow_dispatch
+name: X4 Wiki 4.4.1 crash hardening and QoL
+on:
+  push:
+    branches: [wiki-x4-beta441-build]
+    paths:
+      - '.github/workflows/wiki-x4-beta441.yml'
+      - '.github/wiki441_build.sh.00'
+      - '.github/wiki441_build.sh.01a1'
+      - '.github/wiki441_verify.sh'
+      - '.github/wiki441_toolchain.sh'
+      - '.github/wiki441_package.sh'
+      - '.github/wiki441_contract_tests.py'
+      - '.github/wiki441_exception_profile.py'
+      - '.github/wiki441_memory_patch.py.*'
+      - '.github/wiki441_qol.patch.gz.b64'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -13,11 +27,16 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - run: bash .github/wiki441_build.sh.00
-      - run: bash .github/wiki441_build.sh.01a1
-      - run: bash .github/wiki441_verify.sh
-      - run: bash .github/wiki441_toolchain.sh
-      - run: bash .github/wiki441_package.sh
+      - name: Reconstruct 4.4.0
+        run: bash .github/wiki441_build.sh.00
+      - name: Apply 4.4.1 crash + QoL fixes
+        run: bash .github/wiki441_build.sh.01a1
+      - name: Verify 4.4.1 contracts
+        run: bash .github/wiki441_verify.sh
+      - name: Install toolchain and build original X4
+        run: bash .github/wiki441_toolchain.sh
+      - name: Package 4.4.1
+        run: bash .github/wiki441_package.sh
       - uses: actions/upload-artifact@v6
         with:
           name: crosspoint-1.6.0-wiki-4.4.1-x4-UNTESTED
