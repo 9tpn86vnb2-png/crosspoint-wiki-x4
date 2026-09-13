@@ -1,0 +1,10 @@
+Wiki 4.4.0 build trigger.
+
+Base: verified Wiki 4.3.8 original-X4 application source.
+Target: original Xteink X4 ESP32-C3 only.
+
+4.4.0 adds queued input during render/antialias work, compact portrait chrome,
+optional status/button guides, interactive button guide, indexed home metadata,
+A-Z/category-prefix browsing, and a smooth 1% ADC battery percentage model.
+
+Hardware status: UNTESTED until verified on a physical original X4.
