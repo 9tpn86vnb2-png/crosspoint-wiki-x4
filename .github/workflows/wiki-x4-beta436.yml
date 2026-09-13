@@ -1,0 +1,213 @@
+name: X4 Wiki 4.3.6 structured tables
+
+on:
+  push:
+    branches: [wiki-x4-beta436-build]
+    paths:
+      - '.github/workflows/wiki-x4-beta436.yml'
+      - '.github/wiki436.patch.00'
+      - '.github/wiki436.patch.01'
+      - '.github/wiki436.patch.02'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wiki-x4-beta436-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zlib1g-dev
+
+      - name: Reconstruct reviewed Wiki 4.3.1
+        run: |
+          set -euo pipefail
+          python scripts/wiki_beta40_ci_integrate.py
+          python scripts/wiki_beta41_integrate.py
+          python scripts/wiki_beta42_integrate.py
+          python scripts/wiki_beta43_integrate.py
+          python scripts/wiki_beta431_integrate.py
+
+      - name: Reconstruct verified Wiki 4.3.3
+        run: |
+          set -euo pipefail
+          cat .clangd .clang-format GOVERNANCE.md README.md .gitignore > /tmp/wiki433.b64
+          base64 -d /tmp/wiki433.b64 > /tmp/wiki433.patch.gz
+          echo '859809bf044723681e042e7bc100b0f5cffaf3877bdaaae859ac8a283802c689  /tmp/wiki433.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/wiki433.patch.gz > /tmp/wiki433.patch
+          echo '9351d830c148dd8e907a908041816f62a65cee9f5e5eec334e2999122883df82  /tmp/wiki433.patch' | sha256sum -c -
+          git apply --check /tmp/wiki433.patch
+          git apply /tmp/wiki433.patch
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/activities/wiki/WikiArchive.cpp')
+          s=p.read_text()
+          old='std::min(source.size(),gt+1+XML_MAX_REFERENCE_BYTES*4u)'
+          new='std::min<size_t>(source.size(),gt+1+size_t(XML_MAX_REFERENCE_BYTES)*4u)'
+          if s.count(old)!=1: raise SystemExit('4.3.3 bound patch mismatch')
+          p.write_text(s.replace(old,new,1))
+          PY
+
+      - name: Reconstruct verified Wiki 4.3.4
+        run: |
+          set -euo pipefail
+          cat .github/wiki434.patch.00 .github/wiki434.patch.01 .github/wiki434.patch.02 .github/wiki434.patch.03 .github/wiki434.patch.04 .github/wiki434.patch.05 > /tmp/wiki434.b64
+          base64 -d /tmp/wiki434.b64 > /tmp/wiki434.patch.gz
+          echo '3c02c94275023da70c486642f9e8e321d4f3d485b0602025062c16f1cb6c98db  /tmp/wiki434.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/wiki434.patch.gz > /tmp/wiki434.patch
+          echo 'a7571e11b2c4cd739a36d2665e3055433b191b52391f56cdb6b0e4375c471325  /tmp/wiki434.patch' | sha256sum -c -
+          git apply --check /tmp/wiki434.patch
+          git apply /tmp/wiki434.patch
+          echo 'd7e62b68fd8ece3cfe6e872c1625a62df842f5ef67b37fd2f4b57d8cf0e8e58f  platformio.local.ini' | sha256sum -c -
+          echo '4b0b62d44c70b1d69e04754190723d4072bfea86f5a4739d1cab276e8467bc34  src/activities/wiki/WikiActivity.cpp' | sha256sum -c -
+          echo '01dee01b8c9ffae416661fe9ca3fac77a06b9dfa2803dc5817d0fc39efe0efcd  src/activities/wiki/WikiHeading.cpp' | sha256sum -c -
+
+      - name: Reconstruct verified Wiki 4.3.5
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/activities/wiki/WikiActivity.cpp')
+          s=p.read_text()
+          needle="int richFont(int baseFont, uint8_t style) { return (style & WikiText::Small) ? SMALL_FONT_ID : baseFont; }\n"
+          insert="""int richFont(int baseFont, uint8_t style) { return (style & WikiText::Small) ? SMALL_FONT_ID : baseFont; }\n\nint richSpaceWidth(const GfxRenderer& renderer, int font, uint8_t style) {\n  const auto face = fontStyle(style);\n  const auto it = renderer.getFontMap().find(font);\n  if (it != renderer.getFontMap().end()) {\n    const auto* glyph = it->second.getGlyph(uint32_t(' '), face);\n    if (glyph) {\n      const int advance = fp4::toPixel(glyph->advanceX);\n      if (advance > 0) return advance;\n    }\n  }\n  const int contextual = renderer.getTextWidth(font, \"n n\", face) - 2 * renderer.getTextWidth(font, \"n\", face);\n  if (contextual > 0) return contextual;\n  return std::max(2, renderer.getTextWidth(font, \"n\", face) / 3);\n}\n"""
+          if s.count(needle)!=1: raise SystemExit('WikiActivity insertion mismatch')
+          s=s.replace(needle,insert,1)
+          replacements={
+            'const int spaceWidth=std::max(1,renderer.getTextWidth(runFont," ",fontStyle(style)));':'const int spaceWidth=richSpaceWidth(renderer,runFont,style);',
+            'width+=std::max(1,renderer.getTextWidth(spaceFont," "));':'width+=richSpaceWidth(renderer,spaceFont,uint8_t(style|nextStyle));',
+            'x+=std::max(1,renderer.getTextWidth(spaceFont," "));':'x+=richSpaceWidth(renderer,spaceFont,uint8_t(style|nextStyle));',
+            'const int space=std::max(1,renderer.getTextWidth(font," "));':'const int space=richSpaceWidth(renderer,font,WikiText::Regular);',
+          }
+          for old,new in replacements.items():
+            if old not in s: raise SystemExit('WikiActivity replacement missing: '+old)
+            s=s.replace(old,new)
+          p.write_text(s)
+
+          p=Path('src/activities/wiki/WikiHeading.cpp')
+          s=p.read_text()
+          needle="""int runWidth(const GfxRenderer& r,int font,const char* text,uint8_t style,int num,int den){\n  int rn,rd;runScale(style,num,den,rn,rd);\n  return scaled(r.getTextWidth(font,text,face(style)),rn,rd);\n}\n"""
+          insert="""int runWidth(const GfxRenderer& r,int font,const char* text,uint8_t style,int num,int den){\n  int rn,rd;runScale(style,num,den,rn,rd);\n  return scaled(r.getTextWidth(font,text,face(style)),rn,rd);\n}\nint spaceWidth(const GfxRenderer& r,int font,uint8_t style){\n  const auto f=face(style);\n  const auto it=r.getFontMap().find(font);\n  if(it!=r.getFontMap().end()){\n    const auto* g=it->second.getGlyph(uint32_t(' '),f);\n    if(g){const int advance=fp4::toPixel(g->advanceX);if(advance>0)return advance;}\n  }\n  const int contextual=r.getTextWidth(font,\"n n\",f)-2*r.getTextWidth(font,\"n\",f);\n  if(contextual>0)return contextual;\n  return std::max(2,r.getTextWidth(font,\"n\",f)/3);\n}\n"""
+          if s.count(needle)!=1: raise SystemExit('WikiHeading insertion mismatch')
+          s=s.replace(needle,insert,1)
+          replacements={
+            'const int sw=scaled(std::max(1,r.getTextWidth(font," ",face(style))),rn,rd);':'const int sw=scaled(spaceWidth(r,font,style),rn,rd);',
+            'width+=scaled(std::max(1,r.getTextWidth(font," ",EpdFontFamily::BOLD)),rn,rd);':'width+=scaled(spaceWidth(r,font,uint8_t(style|next)),rn,rd);',
+            'x+=scaled(std::max(1,r.getTextWidth(font," ",EpdFontFamily::BOLD)),rn,rd);':'x+=scaled(spaceWidth(r,font,uint8_t(style|next)),rn,rd);',
+          }
+          for old,new in replacements.items():
+            if old not in s: raise SystemExit('WikiHeading replacement missing: '+old)
+            s=s.replace(old,new)
+          p.write_text(s)
+
+          p=Path('platformio.local.ini')
+          s=p.read_text()
+          if s.count('1.6.0-wiki-4.3.4')!=2: raise SystemExit('version count mismatch')
+          p.write_text(s.replace('1.6.0-wiki-4.3.4','1.6.0-wiki-4.3.5'))
+          PY
+          echo '59e3114dcac1e931833687aebddc6a69643811dbc7a6432f0b0af0e33d683ade  platformio.local.ini' | sha256sum -c -
+          echo 'cd30ab63d16314ac600f095723085501540751b7d8d299fde97c6ecc4043bb0d  src/activities/wiki/WikiActivity.cpp' | sha256sum -c -
+          echo '76d877b58ec889405faf97f6d5f5284508d7a6bb3e4ed9f8ef9df58cf18c0c13  src/activities/wiki/WikiHeading.cpp' | sha256sum -c -
+
+      - name: Apply and test Wiki 4.3.6 structured tables
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/wiki435
+          cp src/activities/wiki/WikiArchive.cpp src/activities/wiki/WikiArchive.h src/activities/wiki/WikiText.cpp src/activities/wiki/WikiText.h /tmp/wiki435/
+          cat .github/wiki436.patch.00 .github/wiki436.patch.01 .github/wiki436.patch.02 > /tmp/wiki436.b64
+          base64 -d /tmp/wiki436.b64 > /tmp/wiki436.patch.gz
+          echo 'fdaecd04333edc53e7b4f544ac85089fe4d19bd783226d207d6643e0356cdcbe  /tmp/wiki436.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/wiki436.patch.gz > /tmp/wiki436.patch
+          echo '3f783dc3d668901e198b034b7c23993d668d659e1766bbcefcff51b98329823a  /tmp/wiki436.patch' | sha256sum -c -
+          git apply --check /tmp/wiki436.patch
+          git apply /tmp/wiki436.patch
+          git diff --check
+          echo 'fedcf463b8b8e7f4f57a7ea3ad251a2f5aea9eea57e34913d7fbace88ab159a2  platformio.local.ini' | sha256sum -c -
+          echo 'b3715e47c4f79d58f8cd99092879edb9a5250c89b4140440a92420cec1f24c34  src/activities/wiki/WikiArchive.h' | sha256sum -c -
+          echo '5d577099c2b79c329d812d2538b971b1c4b35667ac18e007be268cacbaf44def  src/activities/wiki/WikiArchive.cpp' | sha256sum -c -
+          echo '6d6a5137a6b5ed71aefb4d0b4f9c7fcae440905137bd7f9bbe22956793b7673b  src/activities/wiki/WikiText.h' | sha256sum -c -
+          echo '0d0f50b3dfd30ab26945b5de27649795d151a894b54186c00328e5896086ef0e  src/activities/wiki/WikiText.cpp' | sha256sum -c -
+          echo '92f24a22fba57ee0334540f203a821c44a6c3121df4e0569db81a3160b937e7d  src/activities/wiki/WikiActivity.h' | sha256sum -c -
+          echo 'db3d8d6542c3468c6b02fd52f0c4879661a9fa834436978894c1f61b75e82a09  src/activities/wiki/WikiActivity.cpp' | sha256sum -c -
+          echo '6f72f05ea76d8642a3d6c6206cfcfd6d2e6b925573175282383ce468df043f1f  scripts/wiki_wctb.py' | sha256sum -c -
+          echo '2f901c8183bcd3090492d8e6e415560019c930a2840d4536a167e28127d31670  scripts/wiki_table_tests.py' | sha256sum -c -
+          python -m py_compile scripts/wiki_wctb.py scripts/wiki_table_tests.py
+          python scripts/wiki_table_tests.py --old-dir /tmp/wiki435
+
+      - name: Restore compiler cache
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .cache
+          key: wiki-pio-v4-${{ runner.os }}-${{ hashFiles('platformio.ini','platformio.local.ini') }}
+          restore-keys: wiki-pio-v4-${{ runner.os }}-
+
+      - name: Install firmware build dependencies
+        run: |
+          python -m pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+          python -m pip install -r requirements.txt
+          python -m pip install 'littlefs-python>=0.16.0' 'fatfs-ng>=0.1.14' 'pyyaml>=6.0.2' 'rich-click>=1.8.6' 'zopfli>=0.2.2' 'intelhex>=2.3.0' 'rich>=14.0.0' 'urllib3<2' 'cryptography>=45.0.3' 'certifi>=2025.8.3' 'ecdsa>=0.19.1' 'bitstring>=4.3.1' 'reedsolo>=1.5.3,<1.8' 'esp-idf-size>=2.0.0' 'esp-coredump>=1.14.0' 'esptool>=5,<6'
+
+      - name: Refresh ESP32-C3 SDK metadata
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          (Path.home()/'.platformio/packages/framework-arduinoespressif32-libs/esp32c3/sdkconfig.crosspoint').unlink(missing_ok=True)
+          PY
+
+      - name: Build original X4 application
+        run: |
+          set -euo pipefail
+          pio run -e wiki_x4_beta 2>&1 | tee wiki-build.log
+
+      - name: Validate and package
+        run: |
+          set -euo pipefail
+          PYTHONPATH=scripts python - <<'PY' 2>&1 | tee wiki-package.log
+          import hashlib, json, wiki_package as base
+          base.NAME='crosspoint-1.6.0-wiki-4.3.6-x4-UNTESTED.bin'
+          base.UI_VERSION='1.6.0-wiki-4.3.6'
+          base.main()
+          p=base.OUT/'build-manifest.json'
+          m=json.loads(p.read_text())
+          m.update(features=['Wiki 4.3.5 feature set','Native structured MediaWiki XML tables','Responsive grid and stacked table rendering','WCTB v1 append-only WCDB table extension','Legacy WCDB backward-compatible fallback','Old-reader compatibility and corrupt-extension fallback tests'],hardware_tested=False)
+          p.write_text(json.dumps(m,indent=2)+'\n')
+          files=sorted(x for x in base.OUT.iterdir() if x.is_file() and x.name!='SHA256SUMS.txt')
+          (base.OUT/'SHA256SUMS.txt').write_text(''.join(f"{hashlib.sha256(x.read_bytes()).hexdigest()}  {x.name}\n" for x in files))
+          PY
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: crosspoint-1.6.0-wiki-4.3.6-x4-UNTESTED
+          path: wiki-dist/
+          if-no-files-found: error
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-beta436-build-log
+          path: |
+            wiki-build.log
+            wiki-package.log
+          if-no-files-found: ignore
