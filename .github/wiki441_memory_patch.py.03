@@ -1,0 +1,25 @@
+newfunc='''WikiArchive::Entry WikiArchive::readXmlPage(uint64_t offset, bool body) try {
+  logXmlHeap("begin",0);
+  Entry result; if(!file_.seek(offset)) return result;
+  std::array<uint8_t,XML_IO_CHUNK> buf{}; uint64_t consumed=0; bool inTag=false,captureTitle=false,captureText=false,done=false,truncated=false; std::string tag,title,text,redirect;
+  tag.reserve(256); title.reserve(256); if(body) text.reserve(std::min<uint32_t>(XML_MAX_TEXT,8192));
+  while(!done&&offset+consumed<fileSize_){
+    const size_t want=static_cast<size_t>(std::min<uint64_t>(buf.size(),fileSize_-offset-consumed)); const int got=file_.read(buf.data(),want); if(got<=0)break;
+    for(int bi=0;bi<got&&!done;++bi){ const char c=char(buf[size_t(bi)]);
+      if(inTag){ if(tag.size()<1024)tag+=c; if(c=='>'){ inTag=false; if(xmlTagIs(tag,"title")){captureTitle=true;title.clear();} else if(captureTitle&&xmlTagIs(tag,"title",true)){captureTitle=false;title=decodeXml(std::move(title));if(!body){done=true;break;}} else if(xmlTagIs(tag,"redirect")){redirect=attrValue(tag,"title");} else if(body&&xmlTagIs(tag,"text")){captureText=true;} else if(body&&captureText&&xmlTagIs(tag,"text",true)){captureText=false;} else if(xmlTagIs(tag,"page",true)){done=true;} tag.clear(); }}
+      else if(c=='<'){inTag=true;tag.clear();tag+='<';} else if(captureTitle){if(title.size()<XML_MAX_TITLE*4u)title+=c;} else if(body&&captureText){if(text.size()<XML_MAX_TEXT)text+=c;else truncated=true;}
+    }
+    consumed+=uint64_t(got); if(consumed>uint64_t(XML_MAX_TEXT)*32u&&title.empty())break;
+  }
+  trimInPlace(title); if(title.empty())return result; result.title=title;result.key=title;result.found=true;if(!body)return result;
+  text=decodeXml(std::move(text)); logXmlHeap("captured",text.size()); if(redirect.empty())redirect=redirectFromWikitext(text);if(!redirect.empty()){result.text=">"+redirect;return result;}
+  std::string simplified=simplifyWikitext(std::move(text),truncated,&result); logXmlHeap("simplified",simplified.size());
+  const size_t prefix=title.size()+2; if(prefix>=XML_MAX_TEXT){result.text=title.substr(0,XML_MAX_TEXT-1);result.semanticTruncated=true;return result;}
+  if(simplified.size()+prefix>XML_MAX_TEXT){simplified.resize(XML_MAX_TEXT-prefix);result.semanticTruncated=true;}
+  result.text=std::move(simplified); result.text.insert(0,":\\n"); result.text.insert(0,title); logXmlHeap("ready",result.text.size()); return result;
+} catch(const std::bad_alloc&) {
+  logXmlHeap("bad_alloc",0); Entry failed; failed.title="XML article"; failed.key=failed.title; failed.text="Article too complex for available X4 memory."; failed.semanticTruncated=true; failed.found=true; return failed;
+} catch(const std::length_error&) {
+  logXmlHeap("length_error",0); Entry failed; failed.title="XML article"; failed.key=failed.title; failed.text="Article exceeded the safe XML parser limits."; failed.semanticTruncated=true; failed.found=true; return failed;
+}
+'''
