@@ -1,38 +1,60 @@
-# Project Governance & Community Principles
 
-CrossPoint Reader is a community-driven, open-source project. Our goal is to provide a high-quality, open-source
-firmware alternative for the Xteink X4 hardware. To keep this project productive and welcoming as we grow, we ask all
-contributors to follow these principles.
-
-### 1. The "Human First" Rule
-Technical discussions can get heated, but they should never be personal.
-- **Assume good intent:** We are all volunteers working on this in our free time. If a comment seems abrasive, assume
-  it’s a language barrier or a misunderstanding before taking offense.
-- **Focus on the code, not the person:** Critique the implementation, the performance, or the UX. Never the intelligence
-  or character of the contributor.
-- **Inflammatory language:** Personal attacks, trolling, or exclusionary language (based on race, gender, background,
-  etc.) are not welcome here and will be moderated.
-
-### 2. A "Do-ocracy" with Guidance
-CrossPoint thrives because people step up to build what they want to see.
-- If you want a feature, the best way to get it is to start an
-  [Idea Discussion](https://github.com/crosspoint-reader/crosspoint-reader/discussions/categories/ideas) or open a PR.
-- If you want to report a bug, check for duplicates and create an
-  [Issue](https://github.com/crosspoint-reader/crosspoint-reader/issues).
-- While we encourage experimentation, the maintainers reserve the right to guide the project’s technical direction to
-  ensure stability on the ESP32-C3’s constrained hardware.
-- For more guidance on the scope of the project, see the [SCOPE.md](SCOPE.md) document.
-
-### 3. Transparent Communication
-To keep the project healthy, we keep our "work" in the open.
-- **Public by Default:** All technical decisions and project management discussions happen in GitHub Issues, Pull
-  Requests, or the public Discussions tab.
-- **Clarity in Writing:** Because we have a global community with different levels of English proficiency, please be as
-  explicit and clear as possible in your PR descriptions and bug reports.
-
-### 4. Moderation & Safety
-The maintainers are responsible for keeping the community a safe place to contribute.
-- We reserve the right to hide comments, lock threads, or block users who repeatedly violate these principles or engage
-  in harassment.
-- **Reporting:** If you feel you are being harassed or see behavior that is damaging the community, please reach out
-  privately to @daveallie.
+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
+vgdB+INGOGrhh0eAp5Kmlh32PU6oQbrk0WQv5
