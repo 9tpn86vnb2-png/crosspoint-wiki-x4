@@ -1,0 +1,24 @@
+name: W441
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: bash .github/wiki441_build.sh.00
+      - run: bash .github/wiki441_build.sh.01a1
+      - run: bash .github/wiki441_verify.sh
+      - run: bash .github/wiki441_toolchain.sh
+      - run: bash .github/wiki441_package.sh
+      - uses: actions/upload-artifact@v6
+        with:
+          name: crosspoint-1.6.0-wiki-4.4.1-x4-UNTESTED
+          path: wiki-dist/
