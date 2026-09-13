@@ -1,0 +1,5 @@
+s=s[:start]+newfunc+s[end:]; cpp.write_text(s)
+final={ini:'2d1e5f8dc36440d051d4b9d6f6d448075d3f5f4c419615abc86e8b3897135f33',cpp:'c6246dfc39c8e4b7830610994b8ae1b4eee16d3fd205333b0b146fca0b02e4a3',hdr:'f1ef46c19d9ed2d479c4cb3813596aacc61616455b17a58492b55c05e9e1bf97'}
+for p,h in final.items():
+    if sha(p)!=h: raise SystemExit(f'4.4.1 output hash mismatch for {p}: {sha(p)}')
+print('Wiki 4.4.1 XML memory patch applied and hashes verified.')
