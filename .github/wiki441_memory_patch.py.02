@@ -1,0 +1,15 @@
+for a,b in [('simplifyWikitextImpl(table.caption, false, nullptr, true)','simplifyWikitextImpl(std::move(table.caption), false, nullptr, true)'),('simplifyWikitextImpl(cell.text, false, nullptr, true)','simplifyWikitextImpl(std::move(cell.text), false, nullptr, true)'),('simplifyWikitextImpl(body,false,nullptr,true)','simplifyWikitextImpl(std::move(body),false,nullptr,true)'),('simplifyWikitextImpl(caption,false,nullptr,true)','simplifyWikitextImpl(std::move(caption),false,nullptr,true)'),('simplifyWikitextImpl(label,false,nullptr,true)','simplifyWikitextImpl(std::move(label),false,nullptr,true)')]: s=s.replace(a,b)
+old='''  // Collapse excessive blank lines and trailing spaces without touching UTF-8
+  // or zero-width semantic markers.
+  std::string clean; clean.reserve(out.size()); int newlines=0;
+  for(char c:out){if(c=='\\n'){while(!clean.empty()&&clean.back()==' ')clean.pop_back();++newlines;if(newlines<=2)clean+=c;}else{newlines=0;if(c=='\\t')c=' ';if(c==' '&&!clean.empty()&&clean.back()==' ')continue;clean+=c;}}
+  clean=trimCopy(clean);
+'''
+new='''  // Compact in-place: avoid a second article-sized cleanup buffer.
+  std::string clean=std::move(out);
+  compactWhitespaceInPlace(clean);
+'''
+s=must_replace(s,old,new,'in-place cleanup').replace('    clean=trimCopy(clean);','    trimInPlace(clean);').replace('    semantic->references=refs;','    semantic->references=std::move(refs);')
+s=must_replace(s,'  return trimCopy(clean);','  trimInPlace(clean);\n  return clean;','final trim')
+start=s.index('WikiArchive::Entry WikiArchive::readXmlPage(uint64_t offset, bool body) {')
+end=s.index('\nWikiArchive::Entry WikiArchive::xmlEntryAt',start)
