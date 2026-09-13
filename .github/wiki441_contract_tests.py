@@ -4,6 +4,7 @@ hdr=Path('src/activities/wiki/WikiArchive.h').read_text()
 ini=Path('platformio.local.ini').read_text()
 checks={
  'version 4.4.1': '1.6.0-wiki-4.4.1' in ini,
+ 'Wiki X4 exceptions enabled': '-fexceptions' in ini and '-fno-exceptions' in ini.split('build_unflags =',1)[1].split('build_flags =',1)[0],
  '32KiB XML body cap': 'XML_MAX_TEXT = 32768' in hdr,
  'reference count budget': 'XML_MAX_REFERENCES = 24' in hdr,
  'reference bytes budget': 'XML_MAX_REFERENCE_BYTES = 1024' in hdr,
@@ -19,6 +20,7 @@ checks={
  'in-place whitespace cleanup': 'compactWhitespaceInPlace(clean);' in cpp,
  'move reference metadata': 'semantic->references=std::move(refs);' in cpp,
  'readable OOM fallback': 'Article too complex for available X4 memory.' in cpp,
+ 'header contains declarations only': 'WikiArchive::simplifyWikitext' not in hdr and hdr.rstrip().endswith('};'),
 }
 failed=[k for k,v in checks.items() if not v]
 if failed: raise SystemExit('4.4.1 XML memory contracts failed: '+', '.join(failed))
