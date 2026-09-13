@@ -52,11 +52,21 @@ jobs:
           echo '9351d830c148dd8e907a908041816f62a65cee9f5e5eec334e2999122883df82  /tmp/wiki433.patch' | sha256sum -c -
           git apply --check /tmp/wiki433.patch
           git apply /tmp/wiki433.patch
+          python - <<'PYFIX'
+          from pathlib import Path
+          p=Path('src/activities/wiki/WikiArchive.cpp')
+          s=p.read_text()
+          old='std::min(source.size(),gt+1+XML_MAX_REFERENCE_BYTES*4u)'
+          new='std::min<size_t>(source.size(),gt+1+size_t(XML_MAX_REFERENCE_BYTES)*4u)'
+          if s.count(old)!=1:
+              raise SystemExit(f'Wiki 4.3.3 ref bound fix expected one match, found {s.count(old)}')
+          p.write_text(s.replace(old,new,1))
+          PYFIX
           git diff --check
           cat > /tmp/wiki433.expected <<'EOF'
           599342ca84b3d215671b3ac7c32fa2a701b271620f4dd1019fbf7f6b2386fe1c  platformio.local.ini
           27377f3e62526f2ce483d528d67e081a6528815a485471cfe2d9a9c3be6fa2f9  src/activities/wiki/WikiActivity.cpp
-          993431be9330931a9c0efaebba5ad68b1976ee761e3e879c0b7d6a7b74c5a77b  src/activities/wiki/WikiArchive.cpp
+          84721b20855dffc32037cf64bccdb9f4c86b934dad80a659fae714f88d91642d  src/activities/wiki/WikiArchive.cpp
           dd3abee64269b86ba7ce98afad660ab01a2769054aa41fdabbb25ffd6272a355  src/activities/wiki/WikiArchive.h
           5f78bd1d6ab08223af146ca3c7ccb4792f29f0d29d98e5c53928d3979fbd5254  src/activities/wiki/WikiHeading.cpp
           9c4021c03ab7177134a9d8fa2b32c2b008d623288f87c63ef329c89be9fe0b0a  src/activities/wiki/WikiHeading.h
