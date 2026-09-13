@@ -1,0 +1,247 @@
+diff --git a/src/activities/wiki/WikiActivity.cpp b/src/activities/wiki/WikiActivity.cpp
+index 7134b71..deb4985 100644
+--- a/src/activities/wiki/WikiActivity.cpp
++++ b/src/activities/wiki/WikiActivity.cpp
+@@ -20,6 +20,8 @@
+ 
+ namespace {
+ constexpr unsigned HOLD_MS = 600;
++constexpr unsigned PAGE_REPEAT_DELAY_MS = 650;
++constexpr unsigned PAGE_REPEAT_INTERVAL_MS = 320;
+ constexpr size_t MAX_LIBRARIES = 32;
+ constexpr int MAX_SCAN_FILES = 200;
+ 
+@@ -371,8 +373,7 @@ void WikiActivity::saveUiPreferences() const {
+   preferences.end();
+ }
+ 
+-void WikiActivity::openBrowseLetters(bool categories) {
+-  browseCategories_ = categories;
++void WikiActivity::openBrowseLetters() {
+   browseLetterSelection_ = 0;
+   selection_ = 0;
+   status_.clear();
+@@ -386,15 +387,12 @@ void WikiActivity::openBrowseLetter() {
+   browseLetterSelection_ = std::clamp(selection_, 0, 25);
+   const char letter = static_cast<char>('A' + browseLetterSelection_);
+   query_.assign(1, letter);
+-  if (browseCategories_) query_ = std::string("Category:") + letter;
+   matches_.clear();
+   matches_ = archive_.titles(query_, moreMatches_, 16);
+-  resultsMode_ = browseCategories_ ? ResultsMode::Categories : ResultsMode::Alphabetical;
++  resultsMode_ = ResultsMode::Alphabetical;
+   selection_ = 0;
+   screen_ = Screen::Results;
+-  status_ = matches_.empty()
+-      ? (browseCategories_ ? "No category titles for this letter" : "No indexed titles for this letter")
+-      : std::string();
++  status_ = matches_.empty() ? "No indexed titles for this letter" : std::string();
+   requestUpdate();
+ }
+ 
+@@ -438,7 +436,7 @@ void WikiActivity::openSearch() {
+   startActivityForResult(std::move(keyboard), std::move(handler));
+ }
+ int WikiActivity::itemCount() const {
+-  if (screen_ == Screen::Home) return 7;
++  if (screen_ == Screen::Home) return 6;
+   if (screen_ == Screen::Options) return 9;
+   if (screen_ == Screen::Settings) return 4;
+   if (screen_ == Screen::BrowseLetters) return 26;
+@@ -522,11 +520,10 @@ void WikiActivity::openTextSettings() {
+ void WikiActivity::activate() {
+   if (screen_ == Screen::Home) {
+     if (selection_ == 0) openSearch();
+-    else if (selection_ == 1) openBrowseLetters(false);
+-    else if (selection_ == 2) openBrowseLetters(true);
+-    else if (selection_ == 3) changeEntry(0);
+-    else if (selection_ == 4) { screen_ = Screen::Bookmarks; selection_ = 0; status_ = bookmarks_.status(); requestUpdate(); }
+-    else if (selection_ == 5) { screen_ = Screen::Libraries; selection_ = int(std::min(libraryIndex_, libraries_.empty() ? size_t(0) : libraries_.size()-1)); status_.clear(); requestUpdate(); }
++    else if (selection_ == 1) openBrowseLetters();
++    else if (selection_ == 2) changeEntry(0);
++    else if (selection_ == 3) { screen_ = Screen::Bookmarks; selection_ = 0; status_ = bookmarks_.status(); requestUpdate(); }
++    else if (selection_ == 4) { screen_ = Screen::Libraries; selection_ = int(std::min(libraryIndex_, libraries_.empty() ? size_t(0) : libraries_.size()-1)); status_.clear(); requestUpdate(); }
+     else { screen_ = Screen::Settings; selection_ = 0; status_.clear(); requestUpdate(); }
+   } else if (screen_ == Screen::Results && selection_ < int(matches_.size())) openTitle(matches_[selection_].key);
+   else if (screen_ == Screen::BrowseLetters) openBrowseLetter();
+@@ -656,8 +653,27 @@ void WikiActivity::captureInputIntents() {
+ 
+   if (mappedInput.wasPressed(Button::Left)) enqueueIntent(InputIntent::Left);
+   if (mappedInput.wasPressed(Button::Right)) enqueueIntent(InputIntent::Right);
+-  if (mappedInput.wasPressed(Button::Up)) enqueueIntent(InputIntent::Up);
+-  if (mappedInput.wasPressed(Button::Down)) enqueueIntent(InputIntent::Down);
++
++  const uint32_t now = millis();
++  if (mappedInput.wasPressed(Button::Up)) {
++    enqueueIntent(InputIntent::Up);
++    upRepeatAt_ = now;
++  } else if (screen_ == Screen::Article && mappedInput.isPressed(Button::Up) &&
++             mappedInput.getHeldTime() >= PAGE_REPEAT_DELAY_MS && now - upRepeatAt_ >= PAGE_REPEAT_INTERVAL_MS) {
++    enqueueIntent(InputIntent::Up);
++    upRepeatAt_ = now;
++  }
++  if (mappedInput.wasReleased(Button::Up)) upRepeatAt_ = 0;
++
++  if (mappedInput.wasPressed(Button::Down)) {
++    enqueueIntent(InputIntent::Down);
++    downRepeatAt_ = now;
++  } else if (screen_ == Screen::Article && mappedInput.isPressed(Button::Down) &&
++             mappedInput.getHeldTime() >= PAGE_REPEAT_DELAY_MS && now - downRepeatAt_ >= PAGE_REPEAT_INTERVAL_MS) {
++    enqueueIntent(InputIntent::Down);
++    downRepeatAt_ = now;
++  }
++  if (mappedInput.wasReleased(Button::Down)) downRepeatAt_ = 0;
+ }
+@@ -689,7 +705,6 @@ void WikiActivity::applyIntent(InputIntent intent) {
+     else if (screen_ == Screen::Orientation) { screen_ = Screen::Options; selection_ = 6; syncOrientationForScreen(); requestUpdate(); }
+     else if (screen_ == Screen::Options) { screen_ = Screen::Article; syncOrientationForScreen(); requestUpdate(); }
+     else if (screen_ == Screen::Settings || screen_ == Screen::BrowseLetters) goWikiHome();
+     else if (screen_ == Screen::Results && resultsMode_ != ResultsMode::Search) {
+-      browseCategories_ = resultsMode_ == ResultsMode::Categories;
+       screen_ = Screen::BrowseLetters;
+       selection_ = browseLetterSelection_;
+       status_.clear();
+@@ -781,7 +796,7 @@ void WikiActivity::renderHome() {
+   GUI.drawHeader(renderer,Rect{0,m.topPadding,w,m.headerHeight},nullptr);
+ 
+   if (!loadError_ && indexedHome_) {
+-    std::string descriptor = "Library: " + libraryName_ + " [" + archive_.formatName() + "]";
++    std::string descriptor = "Library: " + (libraryIndex_ < libraries_.size() ? libraries_[libraryIndex_].label : libraryName_) + " [" + archive_.formatName() + "]";
+     const int batteryReserve = std::max(84, m.batteryWidth + 58);
+     const auto shown = renderer.truncatedText(SMALL_FONT_ID, descriptor.c_str(), std::max(80, w - side - batteryReserve));
+     const int libraryY = m.topPadding + std::max(0, (m.batteryBarHeight - smallH) / 2);
+@@ -805,8 +820,8 @@ void WikiActivity::renderHome() {
+ 
+   const int row = std::max(compact ? 38 : 46, renderer.getLineHeight(UI_12_FONT_ID)+12);
+   const int gap = compact ? 5 : 7;
+-  const char* labels[] = {"Search Wikipedia...", "Browse A-Z", "Browse categories", "Random article", "Saved articles", "Choose library", "Wiki settings"};
+-  for (int i=0; i<7; ++i) {
++  const char* labels[] = {"Search Wikipedia...", "Browse A-Z", "Random article", "Saved articles", "Choose library", "Wiki settings"};
++  for (int i=0; i<6; ++i) {
+@@ -816,7 +831,8 @@ void WikiActivity::renderHome() {
+ 
+   char count[96];
+   std::snprintf(count,sizeof(count),"%lu indexed titles | %u saved",static_cast<unsigned long>(archive_.entryCount()),unsigned(bookmarks_.items().size()));
+-  const int bottom = h-m.buttonHintsHeight-smallH-8;
++  const int homeHints = portraitButtonGuides_ ? m.buttonHintsHeight : 0;
++  const int bottom = h-homeHints-smallH-8;
+@@ -831,12 +847,10 @@ void WikiActivity::renderList() {
+   std::string heading;
+   if (screen_ == Screen::Results) {
+-    heading = resultsMode_ == ResultsMode::Search ? "Search results" : resultsMode_ == ResultsMode::Categories ? "Category titles" : "Browse A-Z";
++    heading = resultsMode_ == ResultsMode::Search ? "Search results" : "Browse A-Z";
+   } else if (screen_ == Screen::Bookmarks) heading = "Saved articles";
+@@ -837,13 +851,11 @@ void WikiActivity::renderList() {
+   else if (screen_ == Screen::Orientation) heading = "Reading orientation";
+   else if (screen_ == Screen::Settings) heading = "Wiki settings";
+-  else if (screen_ == Screen::BrowseLetters) heading = browseCategories_ ? "Browse categories" : "Browse A-Z";
++  else if (screen_ == Screen::BrowseLetters) heading = "Browse A-Z";
+@@ -844,9 +856,8 @@ void WikiActivity::renderList() {
+   int top = m.topPadding+m.headerHeight+16;
+   std::string subtitleText;
+   if (screen_ == Screen::Results) {
+-    subtitleText = resultsMode_ == ResultsMode::Search ? query_ : resultsMode_ == ResultsMode::Categories
+-        ? std::string("Category prefix: ") + char('A' + browseLetterSelection_)
+-        : std::string("Titles beginning with ") + char('A' + browseLetterSelection_);
++    subtitleText = resultsMode_ == ResultsMode::Search ? query_
++        : std::string("Titles beginning with ") + char('A' + browseLetterSelection_);
+@@ -857,7 +868,8 @@ void WikiActivity::renderList() {
+ 
+   const int row = std::max(46,renderer.getLineHeight(UI_12_FONT_ID)+18);
+-  const int bottom = h-m.buttonHintsHeight-2*renderer.getLineHeight(SMALL_FONT_ID)-16;
++  const int listHints = portraitButtonGuides_ ? m.buttonHintsHeight : 0;
++  const int bottom = h-listHints-2*renderer.getLineHeight(SMALL_FONT_ID)-16;
+@@ -872,8 +884,7 @@ void WikiActivity::renderList() {
+   if (!n) {
+     const char* empty = screen_ == Screen::Bookmarks ? "No saved articles yet." :
+         screen_ == Screen::Libraries ? "No compatible CDB/XML libraries found." :
+-        (screen_ == Screen::Results && resultsMode_ == ResultsMode::Categories) ? "No category titles for this letter." :
+         "No matching titles.";
+@@ -884,12 +895,7 @@ void WikiActivity::renderList() {
+     std::string label;
+     if (screen_ == Screen::Results) {
+       label = matches_[i].label;
+-      if (resultsMode_ == ResultsMode::Categories) {
+-        constexpr const char prefix[] = "Category:";
+-        if (label.compare(0,sizeof(prefix)-1,prefix)==0) label.erase(0,sizeof(prefix)-1);
+-      }
+     } else if (screen_ == Screen::Bookmarks) label = bookmarks_.items()[i].title;
+@@ -905,30 +911,30 @@ void WikiActivity::renderButtonGuide() {
+   const auto& m = UITheme::getInstance().getMetrics();
+-  const int w = renderer.getScreenWidth(), h = renderer.getScreenHeight(), side = std::max(24,m.contentSidePadding);
++  const int w = renderer.getScreenWidth(), h = renderer.getScreenHeight();
++  const int side = std::max(14, m.contentSidePadding / 2);
+   GUI.drawHeader(renderer,Rect{0,m.topPadding,w,m.headerHeight},"Button guide");
+-  int y = m.topPadding + m.headerHeight + 14;
+-  renderer.drawText(SMALL_FONT_ID,side,y,"Press or hold a button. Back tap returns to Wiki settings.");
+-  y += renderer.getLineHeight(SMALL_FONT_ID)+14;
++  const int smallH = std::max(1, renderer.getLineHeight(SMALL_FONT_ID));
++  int y = m.topPadding + m.headerHeight + 6;
++  renderer.drawText(SMALL_FONT_ID,side,y,"Press/hold a button. Back tap returns.");
++  y += smallH + 6;
+   const char* rows[] = {
+-      "Back tap  - Back / Wiki home",
+-      "Back hold - Cycle Wiki text size (article)",
+-      "Confirm tap  - Open / choose / Article options",
+-      "Confirm hold - Save Article (article)",
+-      "Left / Right - Previous / next item or article",
+-      "Up / Down - Previous / next item or page"};
+-  const int rowH = std::max(46, renderer.getLineHeight(UI_12_FONT_ID)+18);
++      "Back tap: Back / Wiki home",
++      "Back hold: Cycle Wiki text size",
++      "Confirm tap: Open / Article options",
++      "Confirm hold: Save Article",
++      "Left / Right: Previous / next item/article",
++      "Up / Down: Previous / next page (hold repeats)"};
++  const int rowH = std::max(30, smallH + 10);
+   for (const char* row : rows) {
++    if (y + rowH > h - 2 * smallH - 12) break;
+     renderer.drawRoundedRect(side,y,w-2*side,rowH,1,4,true);
+-    const auto text = renderer.truncatedText(UI_12_FONT_ID,row,w-2*side-18);
+-    renderer.drawText(UI_12_FONT_ID,side+9,y+(rowH-renderer.getLineHeight(UI_12_FONT_ID))/2,text.c_str());
+-    y += rowH+8;
++    const auto text = renderer.truncatedText(SMALL_FONT_ID,row,w-2*side-12);
++    renderer.drawText(SMALL_FONT_ID,side+6,y+(rowH-smallH)/2,text.c_str());
++    y += rowH+4;
+   }
+-  const int feedbackY = std::min(h-renderer.getLineHeight(UI_12_FONT_ID)-18, y+8);
++  const int feedbackY = std::min(h-2*smallH-8, y+4);
+   renderer.drawText(SMALL_FONT_ID,side,feedbackY,"Last input:");
+-  const auto feedback = renderer.truncatedText(UI_12_FONT_ID,(guideFeedback_.empty() ? "None yet" : guideFeedback_).c_str(),w-2*side);
+-  renderer.drawText(UI_12_FONT_ID,side,feedbackY+renderer.getLineHeight(SMALL_FONT_ID)+4,feedback.c_str());
++  const auto feedback = renderer.truncatedText(SMALL_FONT_ID,(guideFeedback_.empty() ? "None yet" : guideFeedback_).c_str(),w-2*side);
++  renderer.drawText(SMALL_FONT_ID,side,feedbackY+smallH+2,feedback.c_str());
+ }
+@@ -1422,7 +1428,8 @@ void WikiActivity::render(RenderLock&&) {
+   const auto& m = UITheme::getInstance().getMetrics();
+   const bool hideArticleHints = screen_ == Screen::Article && !articleShowsButtonHints();
+-  const bool hideAllHints = hideArticleHints || screen_ == Screen::ButtonGuide;
++  const bool hidePortraitHints = screen_ != Screen::Article && !portraitButtonGuides_;
++  const bool hideAllHints = hideArticleHints || hidePortraitHints || screen_ == Screen::ButtonGuide;
+*** End Patch
+diff --git a/src/activities/wiki/WikiActivity.h b/src/activities/wiki/WikiActivity.h
+index 17a19a0..4191c7f 100644
+--- a/src/activities/wiki/WikiActivity.h
++++ b/src/activities/wiki/WikiActivity.h
+@@ -30,12 +30,12 @@ class WikiActivity final : public Activity {
+   };
+   enum class Screen { Home, Results, Bookmarks, Libraries, Article, Options, Orientation, Settings, BrowseLetters, ButtonGuide };
+-  enum class ResultsMode : uint8_t { Search, Alphabetical, Categories };
++  enum class ResultsMode : uint8_t { Search, Alphabetical };
+@@ -46,7 +46,7 @@ class WikiActivity final : public Activity {
+   static std::string libraryLabel(const std::string& filename);
+   void openSearch();
+-  void openBrowseLetters(bool categories);
++  void openBrowseLetters();
+@@ -96,7 +96,6 @@ class WikiActivity final : public Activity {
+   bool portraitButtonGuides_ = false;
+   bool indexedHome_ = true;
+-  bool browseCategories_ = false;
+   int browseLetterSelection_ = 0;
+@@ -108,6 +107,8 @@ class WikiActivity final : public Activity {
+   uint8_t inputQueueCount_ = 0;
+   bool inputQueueOverflow_ = false;
+   bool paginationFresh_ = false;
++  uint32_t upRepeatAt_ = 0;
++  uint32_t downRepeatAt_ = 0;
+   int pagesUntilFullRefresh_ = 1;
