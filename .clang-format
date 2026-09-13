@@ -1,331 +1,59 @@
-Language:        Cpp
-AccessModifierOffset: -1
-AlignAfterOpenBracket: Align
-AlignArrayOfStructures: None
-AlignConsecutiveAssignments:
-  Enabled:         false
-  AcrossEmptyLines: false
-  AcrossComments:  false
-  AlignCompound:   false
-  AlignFunctionDeclarations: false
-  AlignFunctionPointers: false
-  PadOperators:    true
-AlignConsecutiveBitFields:
-  Enabled:         false
-  AcrossEmptyLines: false
-  AcrossComments:  false
-  AlignCompound:   false
-  AlignFunctionDeclarations: false
-  AlignFunctionPointers: false
-  PadOperators:    false
-AlignConsecutiveDeclarations:
-  Enabled:         false
-  AcrossEmptyLines: false
-  AcrossComments:  false
-  AlignCompound:   false
-  AlignFunctionDeclarations: true
-  AlignFunctionPointers: false
-  PadOperators:    false
-AlignConsecutiveMacros:
-  Enabled:         false
-  AcrossEmptyLines: false
-  AcrossComments:  false
-  AlignCompound:   false
-  AlignFunctionDeclarations: false
-  AlignFunctionPointers: false
-  PadOperators:    false
-AlignConsecutiveShortCaseStatements:
-  Enabled:         false
-  AcrossEmptyLines: false
-  AcrossComments:  false
-  AlignCaseArrows: false
-  AlignCaseColons: false
-AlignConsecutiveTableGenBreakingDAGArgColons:
-  Enabled:         false
-  AcrossEmptyLines: false
-  AcrossComments:  false
-  AlignCompound:   false
-  AlignFunctionDeclarations: false
-  AlignFunctionPointers: false
-  PadOperators:    false
-AlignConsecutiveTableGenCondOperatorColons:
-  Enabled:         false
-  AcrossEmptyLines: false
-  AcrossComments:  false
-  AlignCompound:   false
-  AlignFunctionDeclarations: false
-  AlignFunctionPointers: false
-  PadOperators:    false
-AlignConsecutiveTableGenDefinitionColons:
-  Enabled:         false
-  AcrossEmptyLines: false
-  AcrossComments:  false
-  AlignCompound:   false
-  AlignFunctionDeclarations: false
-  AlignFunctionPointers: false
-  PadOperators:    false
-AlignEscapedNewlines: Left
-AlignOperands:   Align
-AlignTrailingComments:
-  Kind:            Always
-  OverEmptyLines:  0
-AllowAllArgumentsOnNextLine: true
-AllowAllParametersOfDeclarationOnNextLine: true
-AllowBreakBeforeNoexceptSpecifier: Never
-AllowShortBlocksOnASingleLine: Never
-AllowShortCaseExpressionOnASingleLine: true
-AllowShortCaseLabelsOnASingleLine: false
-AllowShortCompoundRequirementOnASingleLine: true
-AllowShortEnumsOnASingleLine: true
-AllowShortFunctionsOnASingleLine: All
-AllowShortIfStatementsOnASingleLine: WithoutElse
-AllowShortLambdasOnASingleLine: All
-AllowShortLoopsOnASingleLine: true
-AllowShortNamespacesOnASingleLine: false
-AlwaysBreakAfterDefinitionReturnType: None
-AlwaysBreakBeforeMultilineStrings: true
-AttributeMacros:
-  - __capability
-  - absl_nonnull
-  - absl_nullable
-  - absl_nullability_unknown
-BinPackArguments: true
-BinPackLongBracedList: true
-BinPackParameters: BinPack
-BitFieldColonSpacing: Both
-BracedInitializerIndentWidth: -1
-BraceWrapping:
-  AfterCaseLabel:  false
-  AfterClass:      false
-  AfterControlStatement: Never
-  AfterEnum:       false
-  AfterExternBlock: false
-  AfterFunction:   false
-  AfterNamespace:  false
-  AfterObjCDeclaration: false
-  AfterStruct:     false
-  AfterUnion:      false
-  BeforeCatch:     false
-  BeforeElse:      false
-  BeforeLambdaBody: false
-  BeforeWhile:     false
-  IndentBraces:    false
-  SplitEmptyFunction: true
-  SplitEmptyRecord: true
-  SplitEmptyNamespace: true
-BreakAdjacentStringLiterals: true
-BreakAfterAttributes: Leave
-BreakAfterJavaFieldAnnotations: false
-BreakAfterReturnType: None
-BreakArrays:     true
-BreakBeforeBinaryOperators: None
-BreakBeforeConceptDeclarations: Always
-BreakBeforeBraces: Attach
-BreakBeforeInlineASMColon: OnlyMultiline
-BreakBeforeTemplateCloser: false
-BreakBeforeTernaryOperators: true
-BreakBinaryOperations: Never
-BreakConstructorInitializers: BeforeColon
-BreakFunctionDefinitionParameters: false
-BreakInheritanceList: BeforeColon
-BreakStringLiterals: true
-BreakTemplateDeclarations: Yes
-ColumnLimit:     120
-CommentPragmas:  '^ IWYU pragma:'
-CompactNamespaces: false
-ConstructorInitializerIndentWidth: 4
-ContinuationIndentWidth: 4
-Cpp11BracedListStyle: true
-DerivePointerAlignment: false
-DisableFormat:   false
-EmptyLineAfterAccessModifier: Never
-EmptyLineBeforeAccessModifier: LogicalBlock
-EnumTrailingComma: Leave
-ExperimentalAutoDetectBinPacking: false
-FixNamespaceComments: true
-ForEachMacros:
-  - foreach
-  - Q_FOREACH
-  - BOOST_FOREACH
-IfMacros:
-  - KJ_IF_MAYBE
-IncludeBlocks:   Regroup
-IncludeCategories:
-  - Regex:           '^<ext/.*\.h>'
-    Priority:        2
-    SortPriority:    0
-    CaseSensitive:   false
-  - Regex:           '^<.*\.h>'
-    Priority:        1
-    SortPriority:    0
-    CaseSensitive:   false
-  - Regex:           '^<.*'
-    Priority:        2
-    SortPriority:    0
-    CaseSensitive:   false
-  - Regex:           '.*'
-    Priority:        3
-    SortPriority:    0
-    CaseSensitive:   false
-IncludeIsMainRegex: '([-_](test|unittest))?$'
-IncludeIsMainSourceRegex: ''
-IndentAccessModifiers: false
-IndentCaseBlocks: false
-IndentCaseLabels: true
-IndentExportBlock: true
-IndentExternBlock: AfterExternBlock
-IndentGotoLabels: true
-IndentPPDirectives: None
-IndentRequiresClause: true
-IndentWidth:     2
-IndentWrappedFunctionNames: false
-InsertBraces:    false
-InsertNewlineAtEOF: false
-InsertTrailingCommas: None
-IntegerLiteralSeparator:
-  Binary:          0
-  BinaryMinDigits: 0
-  Decimal:         0
-  DecimalMinDigits: 0
-  Hex:             0
-  HexMinDigits:    0
-JavaScriptQuotes: Leave
-JavaScriptWrapImports: true
-KeepEmptyLines:
-  AtEndOfFile:     false
-  AtStartOfBlock:  false
-  AtStartOfFile:   true
-KeepFormFeed:    false
-LambdaBodyIndentation: Signature
-LineEnding:      DeriveLF
-MacroBlockBegin: ''
-MacroBlockEnd:   ''
-MainIncludeChar: Quote
-MaxEmptyLinesToKeep: 1
-NamespaceIndentation: None
-ObjCBinPackProtocolList: Never
-ObjCBlockIndentWidth: 2
-ObjCBreakBeforeNestedBlockParam: true
-ObjCSpaceAfterProperty: false
-ObjCSpaceBeforeProtocolList: true
-OneLineFormatOffRegex: ''
-PackConstructorInitializers: NextLine
-PenaltyBreakAssignment: 2
-PenaltyBreakBeforeFirstCallParameter: 1
-PenaltyBreakBeforeMemberAccess: 150
-PenaltyBreakComment: 300
-PenaltyBreakFirstLessLess: 120
-PenaltyBreakOpenParenthesis: 0
-PenaltyBreakScopeResolution: 500
-PenaltyBreakString: 1000
-PenaltyBreakTemplateDeclaration: 10
-PenaltyExcessCharacter: 1000000
-PenaltyIndentedWhitespace: 0
-PenaltyReturnTypeOnItsOwnLine: 200
-PointerAlignment: Left
-PPIndentWidth:   -1
-QualifierAlignment: Leave
-RawStringFormats:
-  - Language:        Cpp
-    Delimiters:
-      - cc
-      - CC
-      - cpp
-      - Cpp
-      - CPP
-      - 'c++'
-      - 'C++'
-    CanonicalDelimiter: ''
-    BasedOnStyle:    google
-  - Language:        TextProto
-    Delimiters:
-      - pb
-      - PB
-      - proto
-      - PROTO
-    EnclosingFunctions:
-      - EqualsProto
-      - EquivToProto
-      - PARSE_PARTIAL_TEXT_PROTO
-      - PARSE_TEST_PROTO
-      - PARSE_TEXT_PROTO
-      - ParseTextOrDie
-      - ParseTextProtoOrDie
-      - ParseTestProto
-      - ParsePartialTestProto
-    CanonicalDelimiter: pb
-    BasedOnStyle:    google
-ReferenceAlignment: Pointer
-ReflowComments:  Always
-RemoveBracesLLVM: false
-RemoveEmptyLinesInUnwrappedLines: false
-RemoveParentheses: Leave
-RemoveSemicolon: false
-RequiresClausePosition: OwnLine
-RequiresExpressionIndentation: OuterScope
-SeparateDefinitionBlocks: Leave
-ShortNamespaceLines: 1
-SkipMacroDefinitionBody: false
-SortIncludes:
-  Enabled:         true
-  IgnoreCase:      false
-SortJavaStaticImport: Before
-SortUsingDeclarations: LexicographicNumeric
-SpaceAfterCStyleCast: false
-SpaceAfterLogicalNot: false
-SpaceAfterOperatorKeyword: false
-SpaceAfterTemplateKeyword: true
-SpaceAroundPointerQualifiers: Default
-SpaceBeforeAssignmentOperators: true
-SpaceBeforeCaseColon: false
-SpaceBeforeCpp11BracedList: false
-SpaceBeforeCtorInitializerColon: true
-SpaceBeforeInheritanceColon: true
-SpaceBeforeJsonColon: false
-SpaceBeforeParens: ControlStatements
-SpaceBeforeParensOptions:
-  AfterControlStatements: true
-  AfterForeachMacros: true
-  AfterFunctionDefinitionName: false
-  AfterFunctionDeclarationName: false
-  AfterIfMacros:   true
-  AfterNot:        false
-  AfterOverloadedOperator: false
-  AfterPlacementOperator: true
-  AfterRequiresInClause: false
-  AfterRequiresInExpression: false
-  BeforeNonEmptyParentheses: false
-SpaceBeforeRangeBasedForLoopColon: true
-SpaceBeforeSquareBrackets: false
-SpaceInEmptyBlock: false
-SpacesBeforeTrailingComments: 2
-SpacesInAngles:  Never
-SpacesInContainerLiterals: true
-SpacesInLineCommentPrefix:
-  Minimum:         1
-  Maximum:         -1
-SpacesInParens:  Never
-SpacesInParensOptions:
-  ExceptDoubleParentheses: false
-  InCStyleCasts:   false
-  InConditionalStatements: false
-  InEmptyParentheses: false
-  Other:           false
-SpacesInSquareBrackets: false
-Standard:        Auto
-StatementAttributeLikeMacros:
-  - Q_EMIT
-StatementMacros:
-  - Q_UNUSED
-  - QT_REQUIRE_VERSION
-TableGenBreakInsideDAGArg: DontBreak
-TabWidth:        8
-UseTab:          Never
-VerilogBreakBetweenInstancePorts: true
-WhitespaceSensitiveMacros:
-  - BOOST_PP_STRINGIZE
-  - CF_SWIFT_NAME
-  - NS_SWIFT_NAME
-  - PP_STRINGIZE
-  - STRINGIZE
-WrapNamespaceBodyWithEmptyLines: Leave
+jJasoM6ycj+ElnrVs6l21QDL/hGx6NBa3FYrHB
+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
