@@ -1,0 +1,219 @@
+name: X4 Wiki 4.3.4 verified build
+
+on:
+  push:
+    branches: [wiki-x4-beta434-build]
+    paths:
+      - '.github/workflows/wiki-x4-beta434.yml'
+      - '.github/wiki434.patch.b64'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wiki-x4-beta434-verified-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zlib1g-dev
+
+      - name: Reconstruct reviewed Wiki 4.3.1
+        run: |
+          set -euo pipefail
+          python scripts/wiki_beta40_ci_integrate.py 2>&1 | tee wiki-beta40-integration.log
+          python scripts/wiki_beta41_integrate.py 2>&1 | tee wiki-beta41-integration.log
+          python scripts/wiki_beta41_tests.py 2>&1 | tee wiki-beta41-tests.log
+          python scripts/wiki_beta42_integrate.py 2>&1 | tee wiki-beta42-integration.log
+          python scripts/wiki_beta42_tests.py 2>&1 | tee wiki-beta42-tests.log
+          python scripts/wiki_beta43_integrate.py 2>&1 | tee wiki-beta43-integration.log
+          python scripts/wiki_beta43_tests.py 2>&1 | tee wiki-beta43-tests.log
+          python scripts/wiki_beta431_integrate.py 2>&1 | tee wiki-beta431-integration.log
+          python scripts/wiki_beta431_tests.py 2>&1 | tee wiki-beta431-tests.log
+
+      - name: Reconstruct verified Wiki 4.3.3 baseline
+        run: |
+          set -euo pipefail
+          cat .clangd .clang-format GOVERNANCE.md README.md .gitignore > /tmp/wiki433.b64
+          base64 -d /tmp/wiki433.b64 > /tmp/wiki433.patch.gz
+          echo '859809bf044723681e042e7bc100b0f5cffaf3877bdaaae859ac8a283802c689  /tmp/wiki433.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/wiki433.patch.gz > /tmp/wiki433.patch
+          echo '9351d830c148dd8e907a908041816f62a65cee9f5e5eec334e2999122883df82  /tmp/wiki433.patch' | sha256sum -c -
+          git apply --check /tmp/wiki433.patch
+          git apply /tmp/wiki433.patch
+          python - <<'PYFIX'
+          from pathlib import Path
+          p=Path('src/activities/wiki/WikiArchive.cpp')
+          s=p.read_text()
+          old='std::min(source.size(),gt+1+XML_MAX_REFERENCE_BYTES*4u)'
+          new='std::min<size_t>(source.size(),gt+1+size_t(XML_MAX_REFERENCE_BYTES)*4u)'
+          if s.count(old)!=1:
+              raise SystemExit(f'Wiki 4.3.3 ref bound fix expected one match, found {s.count(old)}')
+          p.write_text(s.replace(old,new,1))
+          PYFIX
+          git diff --check
+          cat > /tmp/wiki433.expected <<'EOF'
+          599342ca84b3d215671b3ac7c32fa2a701b271620f4dd1019fbf7f6b2386fe1c  platformio.local.ini
+          27377f3e62526f2ce483d528d67e081a6528815a485471cfe2d9a9c3be6fa2f9  src/activities/wiki/WikiActivity.cpp
+          84721b20855dffc32037cf64bccdb9f4c86b934dad80a659fae714f88d91642d  src/activities/wiki/WikiArchive.cpp
+          dd3abee64269b86ba7ce98afad660ab01a2769054aa41fdabbb25ffd6272a355  src/activities/wiki/WikiArchive.h
+          5f78bd1d6ab08223af146ca3c7ccb4792f29f0d29d98e5c53928d3979fbd5254  src/activities/wiki/WikiHeading.cpp
+          9c4021c03ab7177134a9d8fa2b32c2b008d623288f87c63ef329c89be9fe0b0a  src/activities/wiki/WikiHeading.h
+          2946d49dcfa8f15bc4df98dfe4e916c762d51622cd269cedf9c018abd0f624e5  src/activities/wiki/WikiText.cpp
+          1fa0f92befc5686308a3c424e6fa84109534ece7057dee55ba725be1cf398d17  src/activities/wiki/WikiText.h
+          EOF
+          sed -i 's/^          //' /tmp/wiki433.expected
+          sha256sum -c /tmp/wiki433.expected | tee wiki-beta433-source.log
+
+      - name: Apply verified Wiki 4.3.4 patch
+        run: |
+          set -euo pipefail
+          echo 'c71bdca6722cbbc18f4ba4a7b063602cc509fe38c0f8d7a3440f9d483f43647b  .github/wiki434.patch.b64' | sha256sum -c -
+          base64 -d .github/wiki434.patch.b64 > /tmp/wiki434.patch.gz
+          echo '3c02c94275023da70c486642f9e8e321d4f3d485b0602025062c16f1cb6c98db  /tmp/wiki434.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/wiki434.patch.gz > /tmp/wiki434.patch
+          echo 'a7571e11b2c4cd739a36d2665e3055433b191b52391f56cdb6b0e4375c471325  /tmp/wiki434.patch' | sha256sum -c -
+          git apply --check /tmp/wiki434.patch
+          git apply /tmp/wiki434.patch
+          git diff --check
+          cat > /tmp/wiki434.expected <<'EOF'
+          d7e62b68fd8ece3cfe6e872c1625a62df842f5ef67b37fd2f4b57d8cf0e8e58f  platformio.local.ini
+          4b0b62d44c70b1d69e04754190723d4072bfea86f5a4739d1cab276e8467bc34  src/activities/wiki/WikiActivity.cpp
+          1bc03130574e348bd0d43790992a8718b5165c541c603a1e8b239841f92f0946  src/activities/wiki/WikiArchive.cpp
+          01dee01b8c9ffae416661fe9ca3fac77a06b9dfa2803dc5817d0fc39efe0efcd  src/activities/wiki/WikiHeading.cpp
+          4a5ee40d0249fc65d0e6e0bc65d77f154a6c60e164ebb42057e1df6fe6ddd1a0  src/activities/wiki/WikiText.cpp
+          9c5abab83ab688b68af63308bc7290c759889c72ea286215f93c4f2a6859242a  src/activities/wiki/WikiText.h
+          EOF
+          sed -i 's/^          //' /tmp/wiki434.expected
+          sha256sum -c /tmp/wiki434.expected | tee wiki-beta434-source.log
+
+      - name: Test Wiki 4.3.4 regression contracts
+        run: |
+          set -euo pipefail
+          python - <<'PY' 2>&1 | tee wiki-beta434-tests.log
+          from pathlib import Path
+          A=Path('src/activities/wiki/WikiArchive.cpp').read_text()
+          T=Path('src/activities/wiki/WikiText.cpp').read_text()
+          U=Path('src/activities/wiki/WikiActivity.cpp').read_text()
+          G=Path('src/activities/wiki/WikiHeading.cpp').read_text()
+          P=Path('platformio.local.ini').read_text()
+          checks={
+            'version':P.count('1.6.0-wiki-4.3.4')==2,
+            'utf8-punctuation':'boundaryPunctuationBefore' in T and '0x2010' in T and '0x3001' in T,
+            'article-measure-spaces':'width+=int(first-begin)*spaceWidth' in U and 'width+=int(until-last)*spaceWidth' in U,
+            'article-draw-spaces':'x+=int(first-begin)*spaceWidth' in U and 'x+=int(until-last)*spaceWidth' in U,
+            'heading-spaces':'width+=int(first-begin)*sw' in G and 'x+=int(until-last)*sw' in G,
+            'reference-placement':'referenceInsert' in A and 'nextLevel<=referenceLevel' in A,
+            'semantic-reader-preserved':all(x in A for x in ['Caption: ','normalizeTableSource','XML_MAX_TEXT']),
+          }
+          bad=[k for k,v in checks.items() if not v]
+          for k,v in checks.items(): print(('PASS' if v else 'FAIL')+': '+k)
+          if bad: raise SystemExit('failed: '+', '.join(bad))
+          PY
+          cat >/tmp/wiki434-host.cpp <<'CPP'
+          #include <cstdlib>
+          #include <iostream>
+          #include <string>
+          #include "WikiText.h"
+          static void expect(const std::string&s,const std::string&e){char o[1024];WikiText::stripInlineStyles(s.c_str(),o,sizeof(o));if(std::string(o)!=e){std::cerr<<o<<" != "<<e<<"\n";std::exit(1);}}
+          int main(){
+            expect("the'''MOON'''is","the MOON is");
+            expect("The '''Sun'''.","The Sun.");
+            expect("\"'''bold'''\"","\"bold\"");
+            expect("“'''bold'''”","“bold”");
+            expect("'''bold'''—next","bold—next");
+            expect("before—'''bold'''","before—bold");
+            expect("''italic''…next","italic…next");
+            std::string l="Earth, ";l.push_back(char(WikiText::LINK_MARKER));l+="Mars";l.push_back(char(WikiText::LINK_MARKER));l+=", and ";l.push_back(char(WikiText::LINK_MARKER));l+="Jupiter";l.push_back(char(WikiText::LINK_MARKER));expect(l,"Earth, Mars, and Jupiter");
+          }
+          CPP
+          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -Isrc/activities/wiki /tmp/wiki434-host.cpp src/activities/wiki/WikiText.cpp -o /tmp/wiki434-host
+          ASAN_OPTIONS=detect_leaks=1 /tmp/wiki434-host 2>&1 | tee wiki-beta434-host.log
+
+      - name: Restore compiler cache
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .cache
+          key: wiki-pio-v3-${{ runner.os }}-${{ hashFiles('platformio.ini','platformio.local.ini') }}
+          restore-keys: wiki-pio-v3-${{ runner.os }}-
+
+      - name: Install firmware build dependencies
+        run: |
+          python -m pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+          python -m pip install -r requirements.txt
+          python -m pip install 'littlefs-python>=0.16.0' 'fatfs-ng>=0.1.14' 'pyyaml>=6.0.2' 'rich-click>=1.8.6' 'zopfli>=0.2.2' 'intelhex>=2.3.0' 'rich>=14.0.0' 'urllib3<2' 'cryptography>=45.0.3' 'certifi>=2025.8.3' 'ecdsa>=0.19.1' 'bitstring>=4.3.1' 'reedsolo>=1.5.3,<1.8' 'esp-idf-size>=2.0.0' 'esp-coredump>=1.14.0' 'esptool>=5,<6'
+
+      - name: Refresh ESP32-C3 SDK metadata
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          (Path.home()/'.platformio/packages/framework-arduinoespressif32-libs/esp32c3/sdkconfig.crosspoint').unlink(missing_ok=True)
+          PY
+
+      - name: Build original X4 application
+        run: |
+          set -euo pipefail
+          pio run -e wiki_x4_beta 2>&1 | tee wiki-build.log
+
+      - name: Validate and package
+        run: |
+          set -euo pipefail
+          PYTHONPATH=scripts python - <<'PY' 2>&1 | tee wiki-package.log
+          import hashlib, json, wiki_package as base
+          base.NAME='crosspoint-1.6.0-wiki-4.3.4-x4-UNTESTED.bin'
+          base.UI_VERSION='1.6.0-wiki-4.3.4'
+          base.main()
+          p=base.OUT/'build-manifest.json'
+          m=json.loads(p.read_text())
+          m.update(
+            features=['Wiki 4.3.3 semantic reader','Rich-run source-space preservation','UTF-8 punctuation-aware boundary spacing','References-section body placement','Link/category/reference metadata','Named references','Caption/table/list fallbacks','Rich headings','Explicit parser budgets'],
+            wiki_reference_corpus=['wikipedia-test-small.xml','wikipedia-test-complex-4.3.3.xml','enwikibooks-2026-09-01-p1p485446.xml.bz2 (development reference)','enwikiversity-2026-09-01-p1p331750.xml.bz2 (development reference)'],
+            xml_supported=True,
+            compressed_xml_bz2_supported=False,
+            hardware_tested=False,
+          )
+          p.write_text(json.dumps(m,indent=2)+'\n')
+          files=sorted(x for x in base.OUT.iterdir() if x.is_file() and x.name!='SHA256SUMS.txt')
+          (base.OUT/'SHA256SUMS.txt').write_text(''.join(f"{hashlib.sha256(x.read_bytes()).hexdigest()}  {x.name}\n" for x in files))
+          PY
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: crosspoint-1.6.0-wiki-4.3.4-x4-UNTESTED
+          path: wiki-dist/
+          if-no-files-found: error
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-beta434-verified-build-log
+          path: |
+            wiki-beta*-integration.log
+            wiki-beta*-tests.log
+            wiki-beta*-host.log
+            wiki-beta433-source.log
+            wiki-beta434-source.log
+            wiki-build.log
+            wiki-package.log
+          if-no-files-found: ignore
