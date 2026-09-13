@@ -1,8 +1,8 @@
-name: X4 Wiki 4.3.3 semantic reader
+name: X4 Wiki 4.3.4 spacing and reference fixes
 
 on:
   push:
-    branches: [wiki-x4-beta433-build]
+    branches: [wiki-x4-beta434-build]
     paths: ['.github/workflows/wiki-x4-beta431.yml']
   workflow_dispatch:
 
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: wiki-x4-beta433-${{ github.ref }}
+  group: wiki-x4-beta434-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -113,6 +113,135 @@ jobs:
           CPP
           g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -Isrc/activities/wiki /tmp/wiki433-host.cpp src/activities/wiki/WikiText.cpp -o /tmp/wiki433-host
           ASAN_OPTIONS=detect_leaks=1 /tmp/wiki433-host 2>&1 | tee wiki-beta433-host.log
+      - name: Apply Wiki 4.3.4 spacing and references patch
+        run: |
+          set -euo pipefail
+          cat > /tmp/wiki434.b64 <<'EOF434'
+          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
+          6f3Ff0R49Xt1OQAA
+          EOF434
+          base64 -d /tmp/wiki434.b64 > /tmp/wiki434.patch.gz
+          echo '3c02c94275023da70c486642f9e8e321d4f3d485b0602025062c16f1cb6c98db  /tmp/wiki434.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/wiki434.patch.gz > /tmp/wiki434.patch
+          echo 'a7571e11b2c4cd739a36d2665e3055433b191b52391f56cdb6b0e4375c471325  /tmp/wiki434.patch' | sha256sum -c -
+          git apply --check /tmp/wiki434.patch
+          git apply /tmp/wiki434.patch
+          git diff --check
+          cat > /tmp/wiki434.expected <<'EOF'
+          d7e62b68fd8ece3cfe6e872c1625a62df842f5ef67b37fd2f4b57d8cf0e8e58f  platformio.local.ini
+          4b0b62d44c70b1d69e04754190723d4072bfea86f5a4739d1cab276e8467bc34  src/activities/wiki/WikiActivity.cpp
+          1bc03130574e348bd0d43790992a8718b5165c541c603a1e8b239841f92f0946  src/activities/wiki/WikiArchive.cpp
+          01dee01b8c9ffae416661fe9ca3fac77a06b9dfa2803dc5817d0fc39efe0efcd  src/activities/wiki/WikiHeading.cpp
+          4a5ee40d0249fc65d0e6e0bc65d77f154a6c60e164ebb42057e1df6fe6ddd1a0  src/activities/wiki/WikiText.cpp
+          9c5abab83ab688b68af63308bc7290c759889c72ea286215f93c4f2a6859242a  src/activities/wiki/WikiText.h
+          EOF
+          sed -i 's/^          //' /tmp/wiki434.expected
+          sha256sum -c /tmp/wiki434.expected | tee wiki-beta434-source.log
+      - name: Test Wiki 4.3.4 spacing regressions
+        run: |
+          set -euo pipefail
+          python - <<'PY' 2>&1 | tee wiki-beta434-tests.log
+          from pathlib import Path
+          A=Path('src/activities/wiki/WikiArchive.cpp').read_text(); T=Path('src/activities/wiki/WikiText.cpp').read_text()
+          U=Path('src/activities/wiki/WikiActivity.cpp').read_text(); G=Path('src/activities/wiki/WikiHeading.cpp').read_text(); P=Path('platformio.local.ini').read_text()
+          checks={
+            'version':P.count('1.6.0-wiki-4.3.4')==2,
+            'utf8-boundary-punctuation':'boundaryPunctuationBefore' in T and '0x2010' in T and '0x3001' in T,
+            'article-edge-space-measure':'width+=int(first-begin)*spaceWidth' in U and 'width+=int(until-last)*spaceWidth' in U,
+            'article-edge-space-draw':'x+=int(first-begin)*spaceWidth' in U and 'x+=int(until-last)*spaceWidth' in U,
+            'heading-edge-spaces':'width+=int(first-begin)*sw' in G and 'x+=int(until-last)*sw' in G,
+            'reference-section-placement':'referenceInsert' in A and 'nextLevel<=referenceLevel' in A,
+            '4.3.3-semantics-preserved':all(x in A for x in ['Caption: ','normalizeTableSource','XML_MAX_TEXT']),
+          }
+          bad=[k for k,v in checks.items() if not v]
+          for k,v in checks.items(): print(('PASS' if v else 'FAIL')+': '+k)
+          if bad: raise SystemExit('failed: '+', '.join(bad))
+          PY
+          cat >/tmp/wiki434-host.cpp <<'CPP'
+          #include <cstdlib>
+          #include <iostream>
+          #include <string>
+          #include "WikiText.h"
+          static void expect(const std::string&s,const std::string&e){char o[1024];WikiText::stripInlineStyles(s.c_str(),o,sizeof(o));if(std::string(o)!=e){std::cerr<<o<<" != "<<e<<"\n";std::exit(1);}}
+          int main(){expect("the'''MOON'''is","the MOON is");expect("The '''Sun'''.","The Sun.");expect("\"'''bold'''\"","\"bold\"");expect("“'''bold'''”","“bold”");expect("'''bold'''—next","bold—next");expect("before—'''bold'''","before—bold");expect("''italic''…next","italic…next");std::string l="Earth, ";l.push_back(char(WikiText::LINK_MARKER));l+="Mars";l.push_back(char(WikiText::LINK_MARKER));l+=", and ";l.push_back(char(WikiText::LINK_MARKER));l+="Jupiter";l.push_back(char(WikiText::LINK_MARKER));expect(l,"Earth, Mars, and Jupiter");}
+          CPP
+          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -Isrc/activities/wiki /tmp/wiki434-host.cpp src/activities/wiki/WikiText.cpp -o /tmp/wiki434-host
+          ASAN_OPTIONS=detect_leaks=1 /tmp/wiki434-host 2>&1 | tee wiki-beta434-host.log
       - name: Restore compiler cache
         continue-on-error: true
         uses: actions/cache/restore@v4
@@ -142,24 +271,25 @@ jobs:
           set -euo pipefail
           PYTHONPATH=scripts python - <<'PY' 2>&1 | tee wiki-package.log
           import json, wiki_package as base
-          base.NAME='crosspoint-1.6.0-wiki-4.3.3-x4-UNTESTED.bin'; base.UI_VERSION='1.6.0-wiki-4.3.3'; base.main()
-          p=base.OUT/'build-manifest.json'; m=json.loads(p.read_text()); m.update(features=['Wiki 4.3.2 feature set','Bounded semantic MediaWiki reader','Link/category/reference metadata','Named references','Caption fallback','Simple table fallback','Rich headings','List semantics','Punctuation-aware spacing','Small/div/span HTML support','Explicit parser budgets'],wiki_reference_corpus=['wikipedia-test-small.xml','enwikibooks-2026-09-01-p1p485446.xml.bz2 (development reference)','enwikiversity-2026-09-01-p1p331750.xml.bz2 (development reference)'],xml_supported=True,compressed_xml_bz2_supported=False,hardware_tested=False);p.write_text(json.dumps(m,indent=2)+'\n')
+          base.NAME='crosspoint-1.6.0-wiki-4.3.4-x4-UNTESTED.bin'; base.UI_VERSION='1.6.0-wiki-4.3.4'; base.main()
+          p=base.OUT/'build-manifest.json'; m=json.loads(p.read_text()); m.update(features=['Wiki 4.3.3 semantic reader','Rich-run source-space preservation','UTF-8 punctuation-aware boundary spacing','References-section body placement','Link/category/reference metadata','Named references','Caption/table/list fallbacks','Rich headings','Explicit parser budgets'],wiki_reference_corpus=['wikipedia-test-small.xml','wikipedia-test-complex-4.3.3.xml','enwikibooks-2026-09-01-p1p485446.xml.bz2 (development reference)','enwikiversity-2026-09-01-p1p331750.xml.bz2 (development reference)'],xml_supported=True,compressed_xml_bz2_supported=False,hardware_tested=False);p.write_text(json.dumps(m,indent=2)+'\n'); import hashlib; files=sorted(x for x in base.OUT.iterdir() if x.is_file() and x.name!='SHA256SUMS.txt'); (base.OUT/'SHA256SUMS.txt').write_text(''.join(f"{hashlib.sha256(x.read_bytes()).hexdigest()}  {x.name}\n" for x in files))
           PY
       - uses: actions/upload-artifact@v6
         with:
-          name: crosspoint-1.6.0-wiki-4.3.3-x4-UNTESTED
+          name: crosspoint-1.6.0-wiki-4.3.4-x4-UNTESTED
           path: wiki-dist/
           if-no-files-found: error
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: wiki-beta433-build-log
+          name: wiki-beta434-build-log
           path: |
             wiki-beta*-integration.log
             wiki-beta*-tests.log
             wiki-beta*-host.log
             wiki-beta433-source.log
+            wiki-beta434-source.log
             wiki-build.log
             wiki-package.log
           if-no-files-found: ignore
