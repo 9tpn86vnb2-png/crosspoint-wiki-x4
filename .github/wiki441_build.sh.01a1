@@ -3,3 +3,10 @@ set -euo pipefail
 cat .github/wiki441_memory_patch.py.00 .github/wiki441_memory_patch.py.01 .github/wiki441_memory_patch.py.02 .github/wiki441_memory_patch.py.03 .github/wiki441_memory_patch.py.04 > /tmp/wiki441_memory_patch.py
 python /tmp/wiki441_memory_patch.py
 python .github/wiki441_exception_profile.py
+
+base64 -d .github/wiki441_qol.patch.gz.b64 > /tmp/wiki441_qol.patch.gz
+echo '3db21d274ee84e3bcdd0f693b93f8cc8fc6a2864cdbac6d2ea886cad90201ab0  /tmp/wiki441_qol.patch.gz' | sha256sum -c -
+gzip -dc /tmp/wiki441_qol.patch.gz > /tmp/wiki441_qol.patch
+echo '3a11d317f5e11df3d88872e8ae7b14d1145530153f54fa07b15be8838c55fde2  /tmp/wiki441_qol.patch' | sha256sum -c -
+git apply --check /tmp/wiki441_qol.patch
+git apply /tmp/wiki441_qol.patch
