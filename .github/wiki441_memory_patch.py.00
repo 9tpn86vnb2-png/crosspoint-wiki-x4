@@ -1,0 +1,22 @@
+from pathlib import Path
+import hashlib
+
+def sha(path): return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+def must_replace(text, old, new, label):
+    if text.count(old) != 1: raise SystemExit(f'{label}: expected one match, got {text.count(old)}')
+    return text.replace(old,new,1)
+
+ini=Path('platformio.local.ini'); cpp=Path('src/activities/wiki/WikiArchive.cpp'); hdr=Path('src/activities/wiki/WikiArchive.h')
+expected={ini:'4d93b54aef969255046414e59e5ae74e982f0549fdc4ca6dc81a9346ac8d58a0',cpp:'5d577099c2b79c329d812d2538b971b1c4b35667ac18e007be268cacbaf44def',hdr:'b3715e47c4f79d58f8cd99092879edb9a5250c89b4140440a92420cec1f24c34'}
+for p,h in expected.items():
+    if sha(p)!=h: raise SystemExit(f'Unexpected 4.4.0 base for {p}: {sha(p)}')
+
+s=ini.read_text().replace('1.6.0-wiki-4.4.0','1.6.0-wiki-4.4.1'); ini.write_text(s)
+s=hdr.read_text()
+for a,b in [('XML_MAX_TEXT = 49152','XML_MAX_TEXT = 32768'),('XML_MAX_LINKS = 64','XML_MAX_LINKS = 48'),('XML_MAX_CATEGORIES = 32','XML_MAX_CATEGORIES = 24'),('XML_MAX_REFERENCES = 48','XML_MAX_REFERENCES = 24'),('XML_MAX_REFERENCE_BYTES = 1536','XML_MAX_REFERENCE_BYTES = 1024'),('simplifyWikitext(const std::string& source','simplifyWikitext(std::string source'),('simplifyWikitextImpl(const std::string& source','simplifyWikitextImpl(std::string source')]:
+    s=must_replace(s,a,b,a)
+hdr.write_text(s)
+
+s=cpp.read_text()
+s=must_replace(s,'#include <new>\n#include <utility>','#include <new>\n#include <stdexcept>\n#include <utility>\n#if __has_include(<esp_heap_caps.h>)\n#include <esp_heap_caps.h>\n#define WIKI_XML_HEAP_DIAGNOSTICS 1\n#else\n#define WIKI_XML_HEAP_DIAGNOSTICS 0\n#endif','heap includes')
+anchor='''std::string trimCopy(std::string value) {\n  size_t a=0,b=value.size();\n  while(a<b&&asciiSpace(value[a])) ++a;\n  while(b>a&&asciiSpace(value[b-1])) --b;\n  return value.substr(a,b-a);\n}\n'''
