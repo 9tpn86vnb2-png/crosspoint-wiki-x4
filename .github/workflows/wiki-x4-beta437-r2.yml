@@ -1,0 +1,122 @@
+name: X4 Wiki 4.3.7 reader chrome QoL R2
+
+on:
+  push:
+    branches: [wiki-x4-beta437-build]
+    paths:
+      - '.github/workflows/wiki-x4-beta437-r2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wiki-x4-beta437-r2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zlib1g-dev
+      - name: Reconstruct and verify Wiki 4.3.6
+        run: |
+          set -euo pipefail
+          python scripts/wiki437_reconstruct.py
+          echo 'fedcf463b8b8e7f4f57a7ea3ad251a2f5aea9eea57e34913d7fbace88ab159a2  platformio.local.ini' | sha256sum -c -
+          echo 'db3d8d6542c3468c6b02fd52f0c4879661a9fa834436978894c1f61b75e82a09  src/activities/wiki/WikiActivity.cpp' | sha256sum -c -
+          echo '92f24a22fba57ee0334540f203a821c44a6c3121df4e0569db81a3160b937e7d  src/activities/wiki/WikiActivity.h' | sha256sum -c -
+      - name: Apply and test Wiki 4.3.7 QoL patch
+        run: |
+          set -euo pipefail
+          cat .github/wiki437.patch.00 .github/wiki437.patch.01 > /tmp/wiki437.b64
+          base64 -d /tmp/wiki437.b64 > /tmp/wiki437.patch.gz
+          echo '0ce46d6f2982dc4dc8e4f94c8a5c2e362b2892a70a3b4f27c446d9aab8d2313a  /tmp/wiki437.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/wiki437.patch.gz > /tmp/wiki437.patch
+          echo 'af0add591352f74ce14064450c105245de1b804272e7c25bd815cf025184f16b  /tmp/wiki437.patch' | sha256sum -c -
+          git apply --check /tmp/wiki437.patch
+          git apply /tmp/wiki437.patch
+          git diff --check
+          echo '34b9b2a246be1c5b4a13ceb4da186001068eca8fb6cf3df9aa8499e9eba7a56f  platformio.local.ini' | sha256sum -c -
+          echo 'ccbd10df5d409c139872c6813730cd267912903ee434738abe191e7374ed88be  src/activities/wiki/WikiActivity.cpp' | sha256sum -c -
+          echo 'ed536d1920e10b614c9735a9627ef305485a84e775511475ce05d3d1398f9103  src/activities/wiki/WikiActivity.h' | sha256sum -c -
+          python - <<'PY'
+          from pathlib import Path
+          cpp=Path('src/activities/wiki/WikiActivity.cpp').read_text(); hdr=Path('src/activities/wiki/WikiActivity.h').read_text(); ini=Path('platformio.local.ini').read_text()
+          checks=[
+            '1.6.0-wiki-4.3.7' in ini,
+            'bool showPageNumbers_ = true;' in hdr,
+            'getBool("pages", true)' in cpp,
+            'Screen::Options) return 9' in cpp,
+            'Page numbers: Shown' in cpp and 'Page numbers: Hidden' in cpp,
+            'archive_.isXml() ? "XML " : "CDB "' in cpp,
+            'renderer.drawRect(badgeX,badgeY,badgeW,badgeH);' in cpp,
+            'constexpr int titleNum=3, titleDen=2;' in cpp,
+            'renderer.drawCenteredText(SMALL_FONT_ID,pageY,info);' in cpp,
+            'getTextHeight(runFont)+1' in cpp,
+          ]
+          if not all(checks): raise SystemExit('Wiki 4.3.7 source contract failed')
+          print('Wiki 4.3.7 source contracts passed')
+          PY
+      - name: Restore compiler cache
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .cache
+          key: wiki-pio-v5-${{ runner.os }}-${{ hashFiles('platformio.ini','platformio.local.ini') }}
+          restore-keys: wiki-pio-v5-${{ runner.os }}-
+      - name: Install firmware build dependencies
+        run: |
+          python -m pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+          python -m pip install -r requirements.txt
+          python -m pip install 'littlefs-python>=0.16.0' 'fatfs-ng>=0.1.14' 'pyyaml>=6.0.2' 'rich-click>=1.8.6' 'zopfli>=0.2.2' 'intelhex>=2.3.0' 'rich>=14.0.0' 'urllib3<2' 'cryptography>=45.0.3' 'certifi>=2025.8.3' 'ecdsa>=0.19.1' 'bitstring>=4.3.1' 'reedsolo>=1.5.3,<1.8' 'esp-idf-size>=2.0.0' 'esp-coredump>=1.14.0' 'esptool>=5,<6'
+      - name: Refresh ESP32-C3 SDK metadata
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          (Path.home()/'.platformio/packages/framework-arduinoespressif32-libs/esp32c3/sdkconfig.crosspoint').unlink(missing_ok=True)
+          PY
+      - name: Build original X4 application
+        run: |
+          set -euo pipefail
+          pio run -e wiki_x4_beta 2>&1 | tee wiki-build.log
+      - name: Validate and package
+        run: |
+          set -euo pipefail
+          PYTHONPATH=scripts python - <<'PY' 2>&1 | tee wiki-package.log
+          import hashlib, json, wiki_package as base
+          base.NAME='crosspoint-1.6.0-wiki-4.3.7-x4-UNTESTED.bin'; base.UI_VERSION='1.6.0-wiki-4.3.7'; base.main()
+          p=base.OUT/'build-manifest.json'; m=json.loads(p.read_text())
+          m.update(features=['Wiki 4.3.6 structured-table feature set','Thin top-right article-name badge','Format + library label beside battery','Large article title header','Persistent page-number toggle','Lower compact page footer','Lower link underlines'],hardware_tested=False)
+          p.write_text(json.dumps(m,indent=2)+'\n')
+          files=sorted(x for x in base.OUT.iterdir() if x.is_file() and x.name!='SHA256SUMS.txt')
+          (base.OUT/'SHA256SUMS.txt').write_text(''.join(f"{hashlib.sha256(x.read_bytes()).hexdigest()}  {x.name}\n" for x in files))
+          PY
+      - uses: actions/upload-artifact@v6
+        with:
+          name: crosspoint-1.6.0-wiki-4.3.7-x4-UNTESTED
+          path: wiki-dist/
+          if-no-files-found: error
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-beta437-r2-build-log
+          path: |
+            wiki-build.log
+            wiki-package.log
+          if-no-files-found: ignore
