@@ -1,24 +1,17 @@
-name: X4 Wiki 4.3.1 independent Wiki text presets
+name: X4 Wiki 4.3.2 banner and formatted spacing
 
 on:
   push:
-    branches: [wiki-x4-beta]
+    branches: [wiki-x4-beta432-build]
     paths:
       - '.github/workflows/wiki-x4-beta431.yml'
-      - 'scripts/wiki_beta431_integrate.py'
-      - 'scripts/wiki_beta431_tests.py'
-      - 'wiki-beta431-overlay.b64.chunk00'
-      - 'wiki-beta431-overlay.b64.chunk01'
-      - 'wiki-beta431-overlay.b64.chunk02'
-      - 'wiki-beta431-overlay.b64.chunk03'
-      - 'WIKI_BETA431.md'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: wiki-x4-beta431-${{ github.ref }}
+  group: wiki-x4-beta432-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -41,7 +34,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y zlib1g-dev
 
-      - name: Reconstruct and test reviewed Wiki 4.3 source
+      - name: Reconstruct reviewed Wiki 4.3.1 source
         run: |
           set -euo pipefail
           python scripts/wiki_beta40_ci_integrate.py 2>&1 | tee wiki-beta40-integration.log
@@ -49,63 +42,215 @@ jobs:
           python scripts/wiki_beta41_tests.py 2>&1 | tee wiki-beta41-tests.log
           python scripts/wiki_beta42_integrate.py 2>&1 | tee wiki-beta42-integration.log
           python scripts/wiki_beta42_tests.py 2>&1 | tee wiki-beta42-tests.log
-          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
-            -Isrc/activities/wiki \
-            scripts/wiki_beta42_typeset_host.cpp src/activities/wiki/WikiText.cpp \
-            -o /tmp/wiki-beta42-typeset-host
-          ASAN_OPTIONS=detect_leaks=1 /tmp/wiki-beta42-typeset-host 2>&1 | tee wiki-beta42-host.log
           python scripts/wiki_beta43_integrate.py 2>&1 | tee wiki-beta43-integration.log
           python scripts/wiki_beta43_tests.py 2>&1 | tee wiki-beta43-tests.log
-          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
-            -Isrc/activities/wiki \
-            scripts/wiki_beta43_typeset_host.cpp src/activities/wiki/WikiText.cpp \
-            -o /tmp/wiki-beta43-typeset-host
-          ASAN_OPTIONS=detect_leaks=1 /tmp/wiki-beta43-typeset-host 2>&1 | tee wiki-beta43-host.log
-
-      - name: Apply and test Wiki 4.3.1 settings and chrome
-        run: |
-          set -euo pipefail
           python scripts/wiki_beta431_integrate.py 2>&1 | tee wiki-beta431-integration.log
-          git diff --check
           python scripts/wiki_beta431_tests.py 2>&1 | tee wiki-beta431-tests.log
 
-      - name: Upload Wiki 4.3.1 integrated source for inspection
-        uses: actions/upload-artifact@v6
-        with:
-          name: wiki-beta431-source-debug
-          path: |
-            src/activities/wiki/
-            src/activities/settings/TextSettingsActivity.h
-            src/activities/settings/TextSettingsActivity.cpp
-            scripts/wiki_beta40_xml_tests.py
-            scripts/wiki_beta40_ci_integrate.py
-            scripts/wiki_beta41_integrate.py
-            scripts/wiki_beta41_tests.py
-            scripts/wiki_beta42_integrate.py
-            scripts/wiki_beta42_tests.py
-            scripts/wiki_beta42_typeset_host.cpp
-            scripts/wiki_beta43_integrate.py
-            scripts/wiki_beta43_tests.py
-            scripts/wiki_beta43_typeset_host.cpp
-            scripts/wiki_beta431_integrate.py
-            scripts/wiki_beta431_tests.py
-            wiki-beta431-overlay.b64.chunk00
-            wiki-beta431-overlay.b64.chunk01
-            wiki-beta431-overlay.b64.chunk02
-            wiki-beta431-overlay.b64.chunk03
-            platformio.local.ini
-            WIKI_BETA40.md
-            WIKI_BETA41.md
-            WIKI_BETA42.md
-            WIKI_BETA43.md
-            WIKI_BETA431.md
-            wiki-beta40-reviewed-source.json
-            wiki-beta41-reviewed-source.json
-            wiki-beta42-reviewed-source.json
-            wiki-beta43-reviewed-source.json
-            wiki-beta431-reviewed-source.json
-            LICENSE
-          if-no-files-found: error
+      - name: Apply Wiki 4.3.2 banner and formatted-spacing changes
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one match, found {count}')
+              return text.replace(old, new, 1)
+
+          p = Path('src/activities/wiki/WikiText.cpp')
+          s = p.read_text()
+          s = replace_once(s, '''size_t stripInlineStyles(const char* input, char* output, size_t capacity) {
+            if (!capacity) return 0;
+            output[0] = 0;
+            if (!input) return 0;
+            const size_t end = std::strlen(input);
+            size_t used = 0;
+            for (size_t p = 0; p < end;) {
+              size_t markerEnd = p; uint8_t toggle = Regular;
+              if (inlineStyleMarker(input, p, end, markerEnd, toggle)) { p = markerEnd; continue; }
+              const unsigned char c = static_cast<unsigned char>(input[p]);
+              size_t n = c < 0x80 ? 1 : (c >= 0xc2 && c <= 0xdf ? 2 : (c >= 0xe0 && c <= 0xef ? 3 : (c >= 0xf0 && c <= 0xf4 ? 4 : 1)));
+              n = std::min(n, end - p);
+              if (used + n >= capacity) break;
+              for (size_t k = 0; k < n; ++k) output[used++] = input[p + k];
+              p += n;
+            }
+            output[used] = 0;
+            return used;
+          }
+          ''', '''size_t stripInlineStyles(const char* input, char* output, size_t capacity) {
+            if (!capacity) return 0;
+            output[0] = 0;
+            if (!input) return 0;
+            const size_t end = std::strlen(input);
+            size_t used = 0;
+            uint8_t style = Regular;
+            for (size_t p = 0; p < end;) {
+              size_t markerEnd = p; uint8_t toggle = Regular;
+              if (inlineStyleMarker(input, p, end, markerEnd, toggle)) {
+                uint8_t nextStyle = style ^ toggle;
+                size_t clusterEnd = markerEnd;
+                while (clusterEnd < end) {
+                  size_t nextEnd = clusterEnd; uint8_t nextToggle = Regular;
+                  if (!inlineStyleMarker(input, clusterEnd, end, nextEnd, nextToggle)) break;
+                  nextStyle ^= nextToggle;
+                  clusterEnd = nextEnd;
+                }
+                const bool beforeFormatted = (style & (Bold | Italic | Link)) != 0;
+                const bool afterFormatted = (nextStyle & (Bold | Italic | Link)) != 0;
+                const bool leftTight = used > 0 && !space(output[used - 1]);
+                const bool rightTight = clusterEnd < end && !space(input[clusterEnd]);
+                if (beforeFormatted != afterFormatted && leftTight && rightTight && used + 1 < capacity) output[used++] = ' ';
+                style = nextStyle;
+                p = clusterEnd;
+                continue;
+              }
+              const unsigned char c = static_cast<unsigned char>(input[p]);
+              size_t n = c < 0x80 ? 1 : (c >= 0xc2 && c <= 0xdf ? 2 : (c >= 0xe0 && c <= 0xef ? 3 : (c >= 0xf0 && c <= 0xf4 ? 4 : 1)));
+              n = std::min(n, end - p);
+              if (used + n >= capacity) break;
+              for (size_t k = 0; k < n; ++k) output[used++] = input[p + k];
+              p += n;
+            }
+            output[used] = 0;
+            return used;
+          }
+          ''', 'WikiText stripInlineStyles')
+          p.write_text(s)
+
+          p = Path('src/activities/wiki/WikiActivity.cpp')
+          s = p.read_text()
+          s = replace_once(s, '''EpdFontFamily::Style fontStyle(uint8_t style) {
+            return static_cast<EpdFontFamily::Style>(style & (WikiText::Bold | WikiText::Italic));
+          }
+          ''', '''EpdFontFamily::Style fontStyle(uint8_t style) {
+            return static_cast<EpdFontFamily::Style>(style & (WikiText::Bold | WikiText::Italic));
+          }
+
+          bool inlineSpace(char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\v'; }
+          bool formattedInline(uint8_t style) { return (style & (WikiText::Bold | WikiText::Italic | WikiText::Link)) != 0; }
+
+          size_t inlineStyleCluster(const char* text, size_t pos, size_t length, uint8_t currentStyle, uint8_t& nextStyle) {
+            size_t markerEnd = pos; uint8_t toggle = WikiText::Regular;
+            if (!WikiText::inlineStyleMarker(text,pos,length,markerEnd,toggle)) { nextStyle=currentStyle; return pos; }
+            nextStyle=currentStyle ^ toggle;
+            size_t clusterEnd=markerEnd;
+            while (clusterEnd<length) {
+              size_t nextEnd=clusterEnd; uint8_t nextToggle=WikiText::Regular;
+              if (!WikiText::inlineStyleMarker(text,clusterEnd,length,nextEnd,nextToggle)) break;
+              nextStyle^=nextToggle;
+              clusterEnd=nextEnd;
+            }
+            return clusterEnd;
+          }
+
+          bool needsFormattedBoundarySpace(const char* text, size_t markerStart, size_t markerEnd, size_t length,
+                                           uint8_t beforeStyle, uint8_t afterStyle) {
+            return formattedInline(beforeStyle) != formattedInline(afterStyle) &&
+                markerStart > 0 && markerEnd < length && !inlineSpace(text[markerStart-1]) && !inlineSpace(text[markerEnd]);
+          }
+          ''', 'WikiActivity helpers')
+
+          old = '''    size_t markerEnd=pos; uint8_t toggle=WikiText::Regular;
+              if (WikiText::inlineStyleMarker(line,pos,length,markerEnd,toggle)) {
+                flush(pos); style^=toggle; pos=begin=markerEnd; continue;
+              }
+          '''
+          measure = '''    size_t markerEnd=pos; uint8_t toggle=WikiText::Regular;
+              if (WikiText::inlineStyleMarker(line,pos,length,markerEnd,toggle)) {
+                flush(pos);
+                uint8_t nextStyle=style;
+                const size_t clusterEnd=inlineStyleCluster(line,pos,length,style,nextStyle);
+                if (needsFormattedBoundarySpace(line,pos,clusterEnd,length,style,nextStyle))
+                  width+=std::max(1,renderer.getTextWidth(font," "));
+                style=nextStyle; pos=begin=clusterEnd; continue;
+              }
+          '''
+          draw = '''    size_t markerEnd=pos; uint8_t toggle=WikiText::Regular;
+              if (WikiText::inlineStyleMarker(line,pos,length,markerEnd,toggle)) {
+                flush(pos);
+                uint8_t nextStyle=style;
+                const size_t clusterEnd=inlineStyleCluster(line,pos,length,style,nextStyle);
+                if (needsFormattedBoundarySpace(line,pos,clusterEnd,length,style,nextStyle))
+                  x+=std::max(1,renderer.getTextWidth(font," "));
+                style=nextStyle; pos=begin=clusterEnd; continue;
+              }
+          '''
+          if s.count(old) != 2:
+              raise SystemExit(f'WikiActivity rich marker block: expected 2 matches, found {s.count(old)}')
+          s = s.replace(old, measure, 1).replace(old, draw, 1)
+          s = replace_once(s, '''    const int available=std::max(40,right-left);
+              const int libraryCap=std::max(44,std::min(available/3,140));
+              const auto lib=renderer.truncatedText(SMALL_FONT_ID,libraryName_.c_str(),libraryCap);
+              const std::string prefix=lib+": ";
+              renderer.drawText(SMALL_FONT_ID,left,textY,prefix.c_str());
+              const int prefixW=renderer.getTextWidth(SMALL_FONT_ID,prefix.c_str());
+              const auto article=renderer.truncatedText(UI_10_FONT_ID,title_.c_str(),std::max(20,available-prefixW),EpdFontFamily::BOLD);
+              renderer.drawText(UI_10_FONT_ID,left+prefixW,textY,article.c_str(),true,EpdFontFamily::BOLD);
+          ''', '''    const int available=std::max(40,right-left);
+              const int bannerGap=12;
+              const int libraryCap=std::max(44,std::min(available/3,160));
+              const auto lib=renderer.truncatedText(SMALL_FONT_ID,libraryName_.c_str(),libraryCap);
+              const int libW=renderer.getTextWidth(SMALL_FONT_ID,lib.c_str());
+              const auto article=renderer.truncatedText(UI_10_FONT_ID,title_.c_str(),std::max(20,available-libW-bannerGap),EpdFontFamily::BOLD);
+              renderer.drawText(UI_10_FONT_ID,left,textY,article.c_str(),true,EpdFontFamily::BOLD);
+              renderer.drawText(SMALL_FONT_ID,right-libW,textY,lib.c_str());
+          ''', 'WikiActivity banner')
+          p.write_text(s)
+
+          p = Path('platformio.local.ini')
+          s = p.read_text()
+          if s.count('1.6.0-wiki-4.3.1') != 2:
+              raise SystemExit('platformio.local.ini version mismatch')
+          p.write_text(s.replace('1.6.0-wiki-4.3.1','1.6.0-wiki-4.3.2'))
+          PY
+          git diff --check
+
+      - name: Test Wiki 4.3.2 source contracts and text spacing
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          wiki=Path('src/activities/wiki/WikiActivity.cpp').read_text()
+          wt=Path('src/activities/wiki/WikiText.cpp').read_text()
+          pio=Path('platformio.local.ini').read_text()
+          checks={
+            '4.3.2 version':'1.6.0-wiki-4.3.2' in pio,
+            'article title left':'renderer.drawText(UI_10_FONT_ID,left,textY,article.c_str(),true,EpdFontFamily::BOLD)' in wiki,
+            'library right':'renderer.drawText(SMALL_FONT_ID,right-libW,textY,lib.c_str())' in wiki,
+            'no banner colon':'const std::string prefix=lib+": ";' not in wiki,
+            'formatted boundary helper':'needsFormattedBoundarySpace' in wiki,
+            'measurement spacing':'width+=std::max(1,renderer.getTextWidth(font," "))' in wiki,
+            'drawing spacing':'x+=std::max(1,renderer.getTextWidth(font," "))' in wiki,
+            'strip spacing':'beforeFormatted != afterFormatted && leftTight && rightTight' in wt,
+          }
+          bad=[k for k,v in checks.items() if not v]
+          for k,v in checks.items(): print(('PASS' if v else 'FAIL')+': '+k)
+          if bad: raise SystemExit('failed: '+', '.join(bad))
+          PY
+          cat >/tmp/wiki-beta432-text-host.cpp <<'CPP'
+          #include <cstdlib>
+          #include <iostream>
+          #include <string>
+          #include "WikiText.h"
+          static void expect(const std::string& source,const std::string& expected,const char* label){
+            char out[512]; WikiText::stripInlineStyles(source.c_str(),out,sizeof(out));
+            if(std::string(out)!=expected){std::cerr<<"FAIL "<<label<<": ["<<out<<"] != ["<<expected<<"]\n"; std::exit(1);} std::cout<<"PASS "<<label<<"\n";
+          }
+          int main(){
+            expect("the'''MOON'''is","the MOON is","bold tight boundaries");
+            expect("the ''Moon'' is","the Moon is","existing italic spaces stay single");
+            expect("x'''''styled'''''y","x styled y","bold italic tight boundaries");
+            std::string link="see"; link.push_back(char(WikiText::LINK_MARKER)); link+="Moon"; link.push_back(char(WikiText::LINK_MARKER)); link+="now";
+            expect(link,"see Moon now","link tight boundaries");
+            expect("word'''bold''italic''bold'''tail","word bolditalicbold tail","nested formatting no internal padding");
+            return 0;
+          }
+          CPP
+          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -Isrc/activities/wiki /tmp/wiki-beta432-text-host.cpp src/activities/wiki/WikiText.cpp -o /tmp/wiki-beta432-text-host
+          ASAN_OPTIONS=detect_leaks=1 /tmp/wiki-beta432-text-host 2>&1 | tee wiki-beta432-host.log
 
       - name: Restore ESP32 compiler cache
         continue-on-error: true
@@ -128,7 +273,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           (Path.home()/'.platformio/packages/framework-arduinoespressif32-libs/esp32c3/sdkconfig.crosspoint').unlink(missing_ok=True)
-          print('Invalidated source-dependent ESP32-C3 SDK metadata for Wiki 4.3.1.')
+          print('Invalidated source-dependent ESP32-C3 SDK metadata for Wiki 4.3.2.')
           PY
 
       - name: Build original X4 application only
@@ -137,75 +282,29 @@ jobs:
           set -euo pipefail
           pio run -e wiki_x4_beta 2>&1 | tee wiki-build.log
 
-      - name: Retain raw build for independent inspection
-        if: ${{ steps.compile.outcome == 'success' }}
-        uses: actions/upload-artifact@v6
-        with:
-          name: wiki-beta431-raw-build-inspection-NOT-VALIDATED
-          path: |
-            .pio/build/wiki_x4_beta/firmware.bin
-            .pio/build/wiki_x4_beta/partitions.bin
-          include-hidden-files: true
-          if-no-files-found: error
-
-      - name: Validate and package Wiki 4.3.1 candidate
+      - name: Validate and package Wiki 4.3.2 candidate
         run: |
           set -euo pipefail
           PYTHONPATH=scripts python - <<'PY' 2>&1 | tee wiki-package.log
-          import hashlib,json,shutil,tarfile
-          from pathlib import Path
+          import json
           import wiki_package as base
-          base.NAME='crosspoint-1.6.0-wiki-4.3.1-x4-UNTESTED.bin'
-          base.UI_VERSION='1.6.0-wiki-4.3.1'
+          base.NAME='crosspoint-1.6.0-wiki-4.3.2-x4-UNTESTED.bin'
+          base.UI_VERSION='1.6.0-wiki-4.3.2'
           base.main()
-          root,out=base.ROOT,base.OUT
-          manifest=json.loads((out/'build-manifest.json').read_text())
-          hashes=manifest['compiled_and_supporting_source_sha256']
-          for name in [
-              'scripts/wiki_beta40_xml_tests.py','scripts/wiki_beta40_ci_integrate.py',
-              'scripts/wiki_beta41_integrate.py','scripts/wiki_beta41_tests.py',
-              'scripts/wiki_beta42_integrate.py','scripts/wiki_beta42_tests.py','scripts/wiki_beta42_typeset_host.cpp',
-              'scripts/wiki_beta43_integrate.py','scripts/wiki_beta43_tests.py','scripts/wiki_beta43_typeset_host.cpp',
-              'scripts/wiki_beta431_integrate.py','scripts/wiki_beta431_tests.py',
-              'wiki-beta431-overlay.b64.chunk00','wiki-beta431-overlay.b64.chunk01','wiki-beta431-overlay.b64.chunk02','wiki-beta431-overlay.b64.chunk03',
-              'WIKI_BETA40.md','WIKI_BETA41.md','WIKI_BETA42.md','WIKI_BETA43.md','WIKI_BETA431.md',
-              'wiki-beta40-reviewed-source.json','wiki-beta41-reviewed-source.json','wiki-beta42-reviewed-source.json',
-              'wiki-beta43-reviewed-source.json','wiki-beta431-reviewed-source.json']:
-              hashes[name]=hashlib.sha256((root/name).read_bytes()).hexdigest()
+          manifest=json.loads((base.OUT/'build-manifest.json').read_text())
           manifest.update(
-            features=['Wiki 4.3 XML/WCDB + typography feature set','Independent Wiki text-settings profile','2px internal-link underlines','Solid heading/subheading rules','Compact Library: Article banner'],
-            wiki_text_settings_independent=True,
-            wiki_text_profile_fields=['font family','font point size','line spacing','extra paragraph spacing','alignment','screen margin'],
-            wiki_text_profile_storage='NVS namespace wikibeta; native EPUB settings file is not written by Wiki text options',
-            wiki_orientation_independent=True,
-            wiki_text_smoothing_independent=True,
-            wiki_link_underline_px=2,
-            wiki_heading_rules='2px under level-2 headings; 1px under lower-level subheadings; rule emitted after final wrapped heading line',
-            wiki_article_banner='Single compact themed header: Library: Article; small library label + compact bold article title; native battery retained',
-            wiki_library_formats=['WCDB .cdb','MediaWiki XML .xml'],
-            xml_supported=True,
-            xml_compressed_supported=False,
-            zim_supported=False,
+            features=['Wiki 4.3.1 feature set','Article-left / library-right banner without colon','Formatted-run boundary spacing'],
+            wiki_article_banner='Compact themed header: article title flush left; library name flush right; no colon',
+            wiki_formatted_run_spacing='One visual space at tight regular-to-formatted and formatted-to-regular boundaries; existing whitespace not doubled; nested formatted transitions not padded',
             hardware_tested=False)
-          (out/'build-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
-          for name in ['WIKI_BETA40.md','WIKI_BETA41.md','WIKI_BETA42.md','WIKI_BETA43.md','WIKI_BETA431.md']:
-              shutil.copy2(root/name,out/name)
-          with tarfile.open(out/'wiki-changed-source.tar.gz','w:gz') as tar:
-              for name in sorted(hashes):
-                  p=root/name
-                  if p.is_file(): tar.add(p,arcname=name)
-          sums=[]
-          for p in sorted(out.iterdir()):
-              if p.is_file() and p.name!='SHA256SUMS.txt':
-                  sums.append(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name)
-          (out/'SHA256SUMS.txt').write_text('\n'.join(sums)+'\n')
-          print('Wiki 4.3.1 package finalized with',len(hashes),'source fingerprints.')
+          (base.OUT/'build-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          print('Wiki 4.3.2 package finalized.')
           PY
 
-      - name: Upload Wiki 4.3.1 candidate
+      - name: Upload Wiki 4.3.2 candidate
         uses: actions/upload-artifact@v6
         with:
-          name: crosspoint-1.6.0-wiki-4.3.1-x4-UNTESTED
+          name: crosspoint-1.6.0-wiki-4.3.2-x4-UNTESTED
           path: wiki-dist/
           if-no-files-found: error
 
@@ -213,19 +312,18 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: wiki-beta431-build-log
+          name: wiki-beta432-build-log
           path: |
             wiki-beta40-integration.log
             wiki-beta41-integration.log
             wiki-beta41-tests.log
             wiki-beta42-integration.log
             wiki-beta42-tests.log
-            wiki-beta42-host.log
             wiki-beta43-integration.log
             wiki-beta43-tests.log
-            wiki-beta43-host.log
             wiki-beta431-integration.log
             wiki-beta431-tests.log
+            wiki-beta432-host.log
             wiki-build.log
             wiki-package.log
             wiki-real-pack-report.json
