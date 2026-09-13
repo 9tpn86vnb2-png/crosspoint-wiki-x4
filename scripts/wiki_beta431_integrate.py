@@ -3,7 +3,12 @@ from pathlib import Path
 import base64, hashlib, io, json, tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
-PARTS = ['wiki-beta431-overlay.b64.part00']
+PARTS = [
+    'wiki-beta431-overlay.b64.chunk00',
+    'wiki-beta431-overlay.b64.chunk01',
+    'wiki-beta431-overlay.b64.chunk02',
+    'wiki-beta431-overlay.b64.chunk03',
+]
 OVERLAY_SHA256 = '6acb6a8fbb7d9d43cbd26fe27199b0cca531bcb7985a0f32a28e0e5347fb99da'
 
 INPUT = {
