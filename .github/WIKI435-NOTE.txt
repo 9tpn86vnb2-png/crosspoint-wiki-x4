@@ -1,0 +1,1 @@
+Wiki 4.3.5 validates rich-text source spaces using the active font's U+0020 glyph advance instead of a 1-pixel fallback.
