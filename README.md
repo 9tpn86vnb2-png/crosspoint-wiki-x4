@@ -1,293 +1,59 @@
-# CrossPoint Reader
-
-[![Fund contributors](https://img.shields.io/badge/%F0%9F%91%91_Fund_contributors-royalty.dev-BB953A?style=for-the-badge&labelColor=1a1a1a)](https://app.royalty.dev/crosspoint-reader/crosspoint-reader)
-
-CrossPoint is open-source e-reader firmware - community-built, fully hackable, free forever. It's maintained by a growing community of developers and readers who believe your device should do what you want - not what a manufacturer decided for you.
-
-### Now running on:
-- **ESP32C3-based** Xteink X4 and X3.
-- **ESP32S3-based** Xteink X4Pro, Seeed reTerminal Sticky, M5PaperMono
-
-Check [our Devices page](https://crosspointreader.com/devices) for the full list.
-
-![CrossPoint Reader running on Xteink device](./docs/images/cover.jpg)
-
-> If you're planning to buy an Xteink device, consider purchasing an **X3/X4 Developer Edition** through https://crosspointreader.com. CrossPoint receives a small share of each sale, helping fund development costs.
-
-## What can CrossPoint do?
-
-- **Reader engine**: EPUB 2/3 rendering with embedded-style option, image handling, hyphenation, kerning, adaptive table layouts, native CJK ruby annotations, chapter navigation, footnotes, bookmarks, dictionary lookups ([StarDict](docs/dictionary.md)), go-to-percent, auto page turn, orientation control, focus reading, KOReader progress sync and more.
-
-- **Various formats**: native handling for `.epub`, `.xtc/.xtch`, `.txt`, and `.bmp`.
-
-- **Touch reading**: follow EPUB links and look up words in the dictionary on touch-enabled devices.
-
-- **Screenshots.**
-
-- **Custom fonts**: install your favorite fonts on the SD card.
-
-- **Tilt page turn (X3 and Sticky)**.
-
-- **USB Drive mode (X4Pro)**: access the SD card as USB mass storage.
-
-- **Library workflow**: folder browser, hidden-file toggle, long-press delete, recent books, SD-cache management.
-
-- **Wireless workflows**:
-  
-  - File transfer web UI
-  - EPUB Optimizer
-  - Web settings UI/API (edit many device settings from browser)
-  - WebSocket fast uploads
-  - WebDAV handler
-  - AP mode (hotspot) and STA mode (join existing Wi-Fi), both with QR helpers
-  - Calibre wireless connect flow
-  - OPDS browser with saved servers (up to 8), search, pagination, and direct download
-  - OTA update checks and installs from GitHub releases
-
-- **Customization**: night mode, multiple themes (Classic, Lyra, Lyra Extended, RoundedRaff), sleep screen modes including transparent overlays, front/side button remapping, status bar controls, power-button behavior, refresh cadence, and more.
-
-- **Localization**: 34 UI languages and counting, including CJK font fallback and RTL support.
-
-### Coming soon:
-
-- More themes.
-
-- Web plugins.
-
-- Bluetooth pageturner.
-
-- Much more! stay tuned.
-
----
-
-## USB-locked devices (Xteink Unlocker)
-
-Some Xteink units purchased from third-party stores (e.g. AliExpress) ship with USB flashing locked from the factory.
-If your device is locked, you will need to use the **Xteink Unlocker** tool available at
-https://crosspointreader.com/#unlock-tool before you can flash CrossPoint.
-
-**You do not need this tool if you bought your device directly from xteink.com.** Those units are not locked.
-
-**Not sure if your device is locked?** Power it on, connect the USB-C cable, and try flashing via the web flasher first (see
-[Install firmware](#install-firmware) below). If the browser's serial device picker does not show your device, try a different
-USB port or browser before assuming the device is locked. Only reach for the unlocker if the device still doesn't appear.
-
-> ### ⚠️ WARNING: READ THIS BEFORE USING THE UNLOCKER ⚠️
-> 
-> **The only officially supported firmwares in the unlock tool are CrossPoint and CrossInk.**
-> 
-> Flashing any other firmware on a USB-locked device may **permanently brick the device** or leave it **permanently
-> stuck on that firmware with no recovery path**. Once USB flashing is re-locked, your only way back is via OTA, and if
-> the firmware you flashed doesn't support OTA, **there is no way out**.
-
-## Install firmware
-
-### Web installer (recommended)
-
-1. Connect your device to your computer via USB-C and wake/unlock the device
-2. Go to https://crosspointreader.com/#flash-tools, select your device (X3, X4, Xteink X4Pro, Seeed reTerminal Sticky, or M5PaperMono), and choose an official CrossPoint release.
-
-### Web installer (specific version)
-
-1. Connect your device to your computer via USB-C and wake/unlock the device
-2. Download the firmware file for your device from [Releases](https://github.com/crosspoint-reader/crosspoint-reader/releases), or compile yourself.
-3. Go to https://crosspointreader.com/#flash-tools, select your device, click "Custom .bin" and upload the firmware file.
-
-### Revert to Official Firmware
-
-To revert to the official firmware, you can also flash the latest official firmware using https://crosspointreader.com/#flash-tools.
-
-### Command line
-
-1. Install [`esptool`](https://github.com/espressif/esptool):
-
-```bash
-pip install esptool
-```
-
-2. Download the firmware file for your device from the [releases page](https://github.com/crosspoint-reader/crosspoint-reader/releases).
-3. Connect your device via USB-C.
-4. Find the device port. On Linux, run `dmesg` after connecting. On macOS:
-
-```bash
-log stream --predicate 'subsystem == "com.apple.iokit"' --info
-```
-
-5. Flash an X3 or X4:
-
-```bash
-esptool.py --chip esp32c3 --port /dev/ttyACM0 --baud 921600 write_flash 0x10000 /path/to/firmware.bin
-```
-
-   Flash an Xteink X4Pro, Seeed reTerminal Sticky, or M5PaperMono:
-
-```bash
-esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 921600 write_flash 0x10000 /path/to/firmware.bin
-```
-
-### Manual
-
-See [Development quick start](#development-quick-start) below.
-
----
-
-## Custom SD-card fonts
-
-Convert your own TTF/OTF files into `.cpfont` files that load from the SD card. No firmware reflash is needed.
-
-1. Go to https://crosspointreader.com/fonts and open the "SD-card font builder" form.
-2. Upload up to four styles (regular, bold, italic, bold-italic), set the family name, point sizes, and Unicode range.
-3. Download the generated `.cpfont` files.
-4. Copy them to your SD card under `/fonts/YourFont/` (or `/.fonts/YourFont/` to hide the folder).
-5. Select the font on the device from the font settings.
-
-Conversion runs the firmware repo's `lib/EpdFont/scripts/fontconvert_sdcard.py` script unmodified, so output matches a local host build.
-
----
-
-## Documentation
-
-- [User Guide](./USER_GUIDE.md)
-- [Web server usage](./docs/webserver.md)
-- [Web server endpoints](./docs/webserver-endpoints.md)
-- [Project scope](./SCOPE.md)
-- [Contributing docs](./docs/contributing/README.md)
-- [Touch and UI development](./docs/contributing/touch-and-ui.md) - how to build new screens on the FreeInkUI activity bases (UiListActivity and friends), plus build envs for the non-Xteink touch devices
-
----
-
-## Development quick start
-
-### Prerequisites
-
-- [pioarduino PlatformIO Core](https://github.com/pioarduino/platformio-core) or [VS Code + pioarduino IDE](https://github.com/pioarduino/pioarduino-vscode-ide)
-- Python 3.8+
-- `clang-format` 21
-- USB-C cable supporting data transfer
-
-### Setup
-
-```bash
-git clone --recursive https://github.com/crosspoint-reader/crosspoint-reader
-cd crosspoint-reader
-
-# if cloned without --recursive:
-git submodule update --init --recursive
-```
-
-### Nix/NixOS
-
-Nix/NixOS users can enter the development shell with either `nix develop` (flakes) or `nix-shell`:
-
-```bash
-nix develop -f nix
-# or
-nix-shell nix
-```
-
-To flash a connected ESP32-C3 device, enable PlatformIO's udev rules in your NixOS configuration:
-
-```nix
-services.udev.packages = with pkgs; [ platformio-core.udev ];
-```
-
-After rebuilding the system configuration, reconnect the device or reload udev rules.
-
-### Build / flash / monitor
-
-```bash
-pio run --target upload
-```
-
-### Contributor pre-PR checks
-
-```bash
-./bin/clang-format-fix
-pio check -e default
-pio run -e default
-```
-
-### Debugging
-
-After flashing the new features, it’s recommended to capture detailed logs from the serial port.
-
-First, make sure all required Python packages are installed:
-
-```python
-python3 -m pip install pyserial colorama matplotlib
-```
-
-After that run the script:
-
-```sh
-# For Linux
-# This was tested on Debian and should work on most Linux systems.
-python3 scripts/debugging_monitor.py
-
-# For macOS
-python3 scripts/debugging_monitor.py /dev/cu.usbmodem2101
-```
-
-Minor adjustments may be required for Windows.
-
----
-
-## Internals
-
-CrossPoint Reader is pretty aggressive about caching data down to the SD card to minimise RAM usage. The ESP32-C3 only has ~380KB of usable RAM, so we have to be careful. A lot of the decisions made in the design of the firmware were based on this constraint.
-
-### Data caching
-
-The first time chapters of a book are loaded, they are cached to the SD card. Subsequent loads are served from the
-cache. This cache directory exists at `.crosspoint` on the SD card. The structure is as follows:
-
-```text
-.crosspoint/
-├── epub_<hash>/         # one directory per book, named by content hash
-│   ├── progress.bin     # reading position (chapter, page, etc.)
-│   ├── cover.bmp        # generated cover image
-│   ├── book.bin         # metadata: title, author, spine, TOC
-│   ├── css_rules.cache  # parsed CSS rule cache
-│   ├── img_*            # rendered image cache files
-│   └── sections/        # per-chapter layout cache
-│       ├── 0.bin
-│       ├── 1.bin
-│       └── ...
-├── settings.json        # device settings
-├── state.json           # resume/runtime state
-└── recent.json          # recent books list
-```
-
-Removing `/.crosspoint` clears all cached metadata and forces a full regeneration on next open. Book deletes, overwrites, and moves done through the firmware or web UI clear or re-key matching caches; manual SD-card edits may leave stale cache directories behind.
-
-For more details on the internal file structures, see the [file formats document](./docs/file-formats.md).
-
----
-
-## Contributing
-
-Contributions are welcome. If you're new to the codebase, start with the [contributing docs](./docs/contributing/README.md). For things to work on, check the [ideas discussion board](https://github.com/crosspoint-reader/crosspoint-reader/discussions/categories/ideas) — leave a comment before starting so we don't duplicate effort.
-
-Everyone here is a volunteer, so please be respectful and patient. For governance and community expectations, see [GOVERNANCE.md](./GOVERNANCE.md).
-
----
-
-## Community forks
-
-One of the best things about open source is that anyone can take the code in a different direction. If you need something outside CrossPoint's [scope](./SCOPE.md), check out the community forks:
-
-- [CrossInk](https://github.com/uxjulia/CrossInk) — UX focused with minimal reading stats and broader customizations for the reading experience.
-
-- [papyrix-reader](https://github.com/bigbag/papyrix-reader) — Adds FB2 and MD format support. Actively maintained with Arabic script support. Custom themes.
-
-- [inx](https://github.com/obijuankenobiii/inx) — Completely reimagines the user interface with tabbed navigation.
-
-- [Witch(hunt) Reader](https://github.com/jpirnay/witchhunt-reader) — More faithful CSS styling and background work for slightly snappier interaction. Weather information panel. Markdown support.
-
-**Note:** Many of these features will make their way into CrossPoint over time. Each project chooses its own priorities and tradeoffs.
-
-Want to build your own device? Be sure to check out the [de-link](https://github.com/iandchasse/de-link) project or [OnePage Reader](https://github.com/MoveCall/onepage-reader).
-
----
-
-CrossPoint Reader is **not affiliated with Xteink or any device manufacturer**.
+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
