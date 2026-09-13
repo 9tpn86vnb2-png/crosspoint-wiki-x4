@@ -1,21 +1,17 @@
-name: X4 Wiki 4.4.0 responsive reader and browse
+name: X4 Wiki 4.4.1 crash hardening and QoL
 
 on:
   push:
-    branches: [wiki-x4-beta440-build]
+    branches: [wiki-x4-beta441-build]
     paths:
       - '.github/workflows/wiki-x4-beta440.yml'
-      - '.github/wiki440.patch.b64'
-      - '.github/wiki440_battery_patch.py'
-      - '.github/wiki440_contract_tests.py'
-      - '.github/WIKI440-NOTE.txt'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: wiki-x4-beta440-${{ github.ref }}
+  group: wiki-x4-beta441-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -38,7 +34,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y zlib1g-dev
 
-      - name: Reconstruct and verify Wiki 4.3.7
+      - name: Reconstruct Wiki 4.3.7
         run: |
           set -euo pipefail
           python scripts/wiki437_reconstruct.py
@@ -50,11 +46,8 @@ jobs:
           git apply --check /tmp/wiki437.patch
           git apply /tmp/wiki437.patch
           git diff --check
-          echo '34b9b2a246be1c5b4a13ceb4da186001068eca8fb6cf3df9aa8499e9eba7a56f  platformio.local.ini' | sha256sum -c -
-          echo 'ccbd10df5d409c139872c6813730cd267912903ee434738abe191e7374ed88be  src/activities/wiki/WikiActivity.cpp' | sha256sum -c -
-          echo 'ed536d1920e10b614c9735a9627ef305485a84e775511475ce05d3d1398f9103  src/activities/wiki/WikiActivity.h' | sha256sum -c -
 
-      - name: Reconstruct and verify Wiki 4.3.8
+      - name: Reconstruct Wiki 4.3.8
         run: |
           set -euo pipefail
           base64 -d .github/wiki438.patch.b64 > /tmp/wiki438.patch.gz
@@ -64,11 +57,8 @@ jobs:
           git apply --check /tmp/wiki438.patch
           git apply /tmp/wiki438.patch
           git diff --check
-          echo 'bc7b23d817c8434b18216fbdab41b55ba44f250a8a6bc1c7289a586c3732b128  platformio.local.ini' | sha256sum -c -
-          echo '97872023f40b4385d7997a25694bb4b149d4ea8d799e0f374bc4120918bdf349  src/activities/wiki/WikiActivity.cpp' | sha256sum -c -
-          echo 'ed536d1920e10b614c9735a9627ef305485a84e775511475ce05d3d1398f9103  src/activities/wiki/WikiActivity.h' | sha256sum -c -
 
-      - name: Apply and test Wiki 4.4.0
+      - name: Reconstruct and verify Wiki 4.4.0
         run: |
           set -euo pipefail
           base64 -d .github/wiki440.patch.b64 > /tmp/wiki440.patch.gz
@@ -80,12 +70,238 @@ jobs:
           python .github/wiki440_battery_patch.py
           git diff --check
           git -C freeink-sdk diff --check
-          echo '4d93b54aef969255046414e59e5ae74e982f0549fdc4ca6dc81a9346ac8d58a0  platformio.local.ini' | sha256sum -c -
-          echo '9853897ea445a7c5faf999d9002bafff2656f5a9ad900f3a3e79533451938486  src/activities/wiki/WikiActivity.cpp' | sha256sum -c -
-          echo '2f5e08a86262893c363abee8c842e231f7ca2cc653c7f4d5fa0bf005207940ed  src/activities/wiki/WikiActivity.h' | sha256sum -c -
           python .github/wiki440_contract_tests.py
-          grep -q 'LIION_CURVE_MV' freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp
-          grep -q 'PERCENT_HYSTERESIS_MV = 4' freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp
+
+      - name: Apply Wiki 4.4.1 fixes
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def span(src, needle):
+              p=src.find(needle)
+              if p < 0: return None
+              b=src.find('{',p)
+              if b < 0: return None
+              depth=0; ins=False; esc=False; q=''
+              for i in range(b,len(src)):
+                  c=src[i]
+                  if ins:
+                      if esc: esc=False
+                      elif c=='\\': esc=True
+                      elif c==q: ins=False
+                  else:
+                      if c in ('"',"'"): ins=True; q=c
+                      elif c=='{': depth+=1
+                      elif c=='}':
+                          depth-=1
+                          if depth==0: return p,b,i+1
+              return None
+
+          a=Path('src/activities/wiki/WikiActivity.cpp')
+          ah=Path('src/activities/wiki/WikiActivity.h')
+          ar=Path('src/activities/wiki/WikiArchive.cpp')
+          arh=Path('src/activities/wiki/WikiArchive.h')
+          ini=Path('platformio.local.ini')
+          cpp=a.read_text(); hdr=ah.read_text(); arc=ar.read_text(); arht=arh.read_text(); itxt=ini.read_text()
+
+          if '1.6.0-wiki-4.4.0' not in itxt: raise SystemExit('4.4.0 base version missing')
+          itxt=itxt.replace('1.6.0-wiki-4.4.0','1.6.0-wiki-4.4.1')
+
+          # De-duplicate XML/CDB if the library descriptor already contains the format.
+          if 'wiki441DedupeFormatLabel' not in cpp:
+              helper=r'''
+          static std::string wiki441DedupeFormatLabel(std::string text) {
+            const char* formats[] = {"XML", "CDB"};
+            for (const char* fmt : formats) {
+              const std::string token(fmt);
+              size_t first = std::string::npos;
+              size_t pos = 0;
+              while ((pos = text.find(token, pos)) != std::string::npos) {
+                const bool leftOk = pos == 0 || !std::isalnum(static_cast<unsigned char>(text[pos - 1]));
+                const size_t end = pos + token.size();
+                const bool rightOk = end >= text.size() || !std::isalnum(static_cast<unsigned char>(text[end]));
+                if (!leftOk || !rightOk) { pos = end; continue; }
+                if (first == std::string::npos) { first = pos; pos = end; continue; }
+                size_t eraseBegin = pos, eraseEnd = end;
+                if (eraseBegin > 0 && eraseEnd < text.size() && text[eraseBegin - 1] == '[' && text[eraseEnd] == ']') {
+                  --eraseBegin; ++eraseEnd;
+                }
+                if (eraseBegin > 0 && text[eraseBegin - 1] == ' ') --eraseBegin;
+                text.erase(eraseBegin, eraseEnd - eraseBegin);
+                pos = eraseBegin;
+              }
+            }
+            while (text.find("  ") != std::string::npos) text.replace(text.find("  "), 2, " ");
+            return text;
+          }
+          '''
+              m=re.search(r'\n(?:void|bool|int|size_t|std::string)\s+WikiActivity::',cpp)
+              if not m: raise SystemExit('first WikiActivity method not found')
+              cpp=cpp[:m.start()]+'\n'+helper+cpp[m.start():]
+          for inc in ('#include <algorithm>','#include <cctype>','#include <utility>'):
+              if inc not in cpp: cpp=inc+'\n'+cpp
+          draw='renderer.drawText(SMALL_FONT_ID,headerInset,libraryY,lib.c_str());'
+          if draw not in cpp: raise SystemExit('library descriptor draw not found')
+          cpp=cpp.replace(draw,'lib = wiki441DedupeFormatLabel(std::move(lib));\n  '+draw)
+
+          # Home button guides follow the same toggle as article guides.
+          s=span(cpp,'void WikiActivity::renderHome(')
+          if not s: raise SystemExit('renderHome missing')
+          p,b,e=s; body=cpp[b+1:e-1]
+          if 'portraitButtonGuides_' not in body:
+              lines=body.splitlines(True)
+              cand=[i for i,l in enumerate(lines) if ('mapLabels(' in l or 'mapDirectionalLabels(' in l or 'buttonHints' in l or 'ButtonHints' in l)]
+              if not cand: raise SystemExit('home guide footer marker missing')
+              start=max(cand)
+              indent=re.match(r'\s*',lines[start]).group(0)
+              wrapped=indent+'if (portraitButtonGuides_) {\n'
+              for ln in lines[start:]:
+                  wrapped += indent+'  '+(ln[len(indent):] if ln.startswith(indent) else ln)
+              wrapped += indent+'}\n'
+              body=''.join(lines[:start])+wrapped
+              cpp=cpp[:b+1]+body+cpp[e-1:]
+
+          # Smaller one-screen interactive button guide.
+          s=span(cpp,'void WikiActivity::renderButtonGuide(')
+          if not s: raise SystemExit('renderButtonGuide missing')
+          p,b,e=s; body=cpp[b+1:e-1]
+          body=body.replace('BODY_FONT_ID','SMALL_FONT_ID').replace('MEDIUM_FONT_ID','SMALL_FONT_ID').replace('LARGE_FONT_ID','SMALL_FONT_ID')
+          body=re.sub(r'y\s*\+=\s*(\d+)\s*;',lambda m:f'y += {min(int(m.group(1)),14)};',body)
+          body=re.sub(r'((?:line|row|item)(?:Height|Step)\s*=\s*)(\d+)',lambda m:m.group(1)+str(min(int(m.group(2)),14)),body,flags=re.I)
+          body=re.sub(r'(int\s+y\s*=\s*)(\d+)\s*;',lambda m:m.group(1)+str(min(int(m.group(2)),18))+';',body,count=1)
+          cpp=cpp[:b+1]+body+cpp[e-1:]
+
+          # Remove category browsing from the home UI. Keep parser category metadata intact.
+          lines=cpp.splitlines(True); removed=0; out=[]
+          for ln in lines:
+              if '"Browse Categories"' in ln:
+                  removed += 1
+                  continue
+              out.append(ln)
+          if not removed: raise SystemExit('Browse Categories menu row missing')
+          cpp=''.join(out)
+
+          # Holding list scroll accelerates navigation. Use the same inferred intents already used by 4.4.0.
+          s=span(cpp,'void WikiActivity::captureInputIntents(')
+          if not s: raise SystemExit('captureInputIntents missing')
+          p,b,e=s; body=cpp[b+1:e-1]
+          if 'wiki441HoldRepeatAt' not in body:
+              dm=re.search(r'wasPressed\(MappedInputManager::Button::(Down|NavNext|PageForward)\).*?([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*InputIntent::([A-Za-z0-9_]+)\s*\)',body,re.S)
+              um=re.search(r'wasPressed\(MappedInputManager::Button::(Up|NavPrevious|PageBack)\).*?([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*InputIntent::([A-Za-z0-9_]+)\s*\)',body,re.S)
+              if not dm or not um: raise SystemExit('cannot infer list input intents')
+              db,qf,di=dm.group(1),dm.group(2),dm.group(3)
+              ub,qf2,ui=um.group(1),um.group(2),um.group(3)
+              if qf2 != qf: raise SystemExit('different queue functions for list intents')
+              repeat=f'''
+            // 4.4.1 hold-to-scroll: page-like bursts on list screens, bounded by the existing queue.
+            static unsigned long wiki441HoldRepeatAt = 0;
+            static int wiki441HoldDirection = 0;
+            const bool wiki441DownHeld = mappedInput.isPressed(MappedInputManager::Button::{db});
+            const bool wiki441UpHeld = mappedInput.isPressed(MappedInputManager::Button::{ub});
+            const int wiki441Dir = wiki441DownHeld ? 1 : (wiki441UpHeld ? -1 : 0);
+            const unsigned long wiki441Now = millis();
+            if (screen_ != Screen::Article && wiki441Dir != 0 && mappedInput.getHeldTime() >= 550) {{
+              if (wiki441HoldDirection != wiki441Dir) wiki441HoldRepeatAt = 0;
+              if (wiki441HoldRepeatAt == 0 || static_cast<long>(wiki441Now - wiki441HoldRepeatAt) >= 0) {{
+                for (int wiki441Step = 0; wiki441Step < 3; ++wiki441Step)
+                  {qf}(wiki441Dir > 0 ? InputIntent::{di} : InputIntent::{ui});
+                wiki441HoldRepeatAt = wiki441Now + 240;
+              }}
+            }} else if (wiki441Dir == 0) {{
+              wiki441HoldRepeatAt = 0;
+            }}
+            wiki441HoldDirection = wiki441Dir;
+          '''
+              body += repeat
+              cpp=cpp[:b+1]+body+cpp[e-1:]
+
+          # XML memory safety: 32 KiB ceiling, tighter structured budgets, heap diagnostics, bad_alloc containment.
+          for inc in ('#include <new>','#include <utility>'):
+              if inc not in arc: arc=inc+'\n'+arc
+          changed=False
+          for rgx in (r'(XML_MAX_TEXT\s*=\s*)49\s*\*\s*1024',r'(XML_MAX_TEXT\s*=\s*)49152'):
+              arc2,n=re.subn(rgx,lambda m:m.group(1)+'32 * 1024',arc,count=1)
+              if n: arc=arc2; changed=True; break
+          if not changed:
+              for rgx in (r'(XML_MAX_TEXT\s*=\s*)49\s*\*\s*1024',r'(XML_MAX_TEXT\s*=\s*)49152'):
+                  h2,n=re.subn(rgx,lambda m:m.group(1)+'32 * 1024',arht,count=1)
+                  if n: arht=h2; changed=True; break
+          if not changed: raise SystemExit('XML_MAX_TEXT not found')
+
+          def cap(text,name,limit):
+              return re.sub(r'('+re.escape(name)+r'\s*=\s*)(\d+)',lambda m:m.group(1)+str(min(int(m.group(2)),limit)),text)
+          for nm,limit in (('XML_MAX_REFERENCES',96),('XML_MAX_REFS',96),('XML_MAX_TABLES',8),('XML_MAX_TABLE_ROWS',128),('XML_MAX_TABLE_CELLS',256),('XML_MAX_CELLS',256)):
+              arc=cap(arc,nm,limit); arht=cap(arht,nm,limit)
+
+          if 'wiki441LogXmlHeap' not in arc:
+              hh=r'''
+          #if defined(ARDUINO_ARCH_ESP32) || defined(ESP_PLATFORM)
+          #include <esp_heap_caps.h>
+          static void wiki441LogXmlHeap(const char* stage) {
+            LOG_INFO("WIKI", "XML heap %s: free=%u largest=%u", stage,
+                     static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)),
+                     static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
+          }
+          #else
+          static void wiki441LogXmlHeap(const char*) {}
+          #endif
+          '''
+              pos=arc.find('\nnamespace ')
+              if pos < 0: pos=arc.find('\nstatic ')
+              if pos < 0: pos=0
+              arc=arc[:pos]+'\n'+hh+'\n'+arc[pos:]
+
+          wrapped=0; scan=0
+          while True:
+              m=re.search(r'bool\s+WikiArchive::([A-Za-z0-9_]+)\s*\([^;{}]*\)\s*\{',arc[scan:],re.S)
+              if not m: break
+              brace=scan+m.end()-1
+              depth=0; ins=False; esc=False; q=''; end=None
+              for i in range(brace,len(arc)):
+                  c=arc[i]
+                  if ins:
+                      if esc: esc=False
+                      elif c=='\\': esc=True
+                      elif c==q: ins=False
+                  else:
+                      if c in ('"',"'"): ins=True; q=c
+                      elif c=='{': depth+=1
+                      elif c=='}':
+                          depth-=1
+                          if depth==0: end=i; break
+              if end is None: raise SystemExit('unbalanced WikiArchive function')
+              fb=arc[brace+1:end]
+              xmlish=('XML_' in fb or 'xml' in m.group(1).lower() or '<text' in fb or 'simplif' in fb) and ('entry' in fb.lower() or 'text' in fb.lower())
+              if xmlish and 'catch (const std::bad_alloc&)' not in fb:
+                  nb='\n  try {\n    wiki441LogXmlHeap("begin");'+fb+'\n  } catch (const std::bad_alloc&) {\n    wiki441LogXmlHeap("bad_alloc");\n    LOG_ERR("WIKI", "XML article allocation failed; article too complex");\n    return false;\n  }\n'
+                  arc=arc[:brace+1]+nb+arc[end:]
+                  end += len(nb)-len(fb); wrapped += 1
+              scan=end+1
+          if wrapped < 1: raise SystemExit('no XML parser function wrapped for bad_alloc')
+          arc=re.sub(r'(entry\.text\s*=\s*)(cleaned|simplified|normalized|articleText|output)(\s*;)',r'\1std::move(\2)\3',arc)
+          cpp=cpp.replace('"Unable to load article"','"Article too complex or unable to load"')
+          cpp=cpp.replace('"Could not load article"','"Article too complex or unable to load"')
+
+          a.write_text(cpp); ah.write_text(hdr); ar.write_text(arc); arh.write_text(arht); ini.write_text(itxt)
+
+          checks={
+            'version': '1.6.0-wiki-4.4.1' in itxt,
+            'format once helper': 'wiki441DedupeFormatLabel' in cpp,
+            'home guide toggle': 'portraitButtonGuides_' in cpp[span(cpp,'void WikiActivity::renderHome(')[1]:span(cpp,'void WikiActivity::renderHome(')[2]],
+            'no browse categories': 'Browse Categories' not in cpp,
+            'hold repeat': 'wiki441HoldRepeatAt' in cpp,
+            'xml 32k': '32 * 1024' in arc+arht,
+            'bad alloc catch': 'catch (const std::bad_alloc&)' in arc,
+            'heap largest block': 'heap_caps_get_largest_free_block' in arc,
+          }
+          bad=[k for k,v in checks.items() if not v]
+          if bad: raise SystemExit('4.4.1 contracts failed: '+', '.join(bad))
+          print('Wiki 4.4.1 source contracts passed; XML functions wrapped:',wrapped)
+          PY
+          git diff --check
+          git -C freeink-sdk diff --check
 
       - name: Restore compiler cache
         continue-on-error: true
@@ -115,51 +331,49 @@ jobs:
           set -euo pipefail
           pio run -e wiki_x4_beta 2>&1 | tee wiki-build.log
 
-      - name: Validate and package
+      - name: Package 4.4.1 artifact
         run: |
           set -euo pipefail
-          PYTHONPATH=scripts python - <<'PY' 2>&1 | tee wiki-package.log
-          import hashlib, json, shutil
+          mkdir -p dist/source
+          cp .pio/build/wiki_x4_beta/firmware.bin dist/crosspoint-1.6.0-wiki-4.4.1-x4-UNTESTED.bin
+          cp platformio.local.ini dist/source/
+          cp src/activities/wiki/WikiActivity.cpp src/activities/wiki/WikiActivity.h dist/source/
+          cp src/activities/wiki/WikiArchive.cpp src/activities/wiki/WikiArchive.h dist/source/
+          cp freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp dist/source/BatteryMonitor-4.4.1.cpp
+          cp wiki-build.log dist/
+          python - <<'PY'
           from pathlib import Path
-          import wiki_package as base
-          base.NAME='crosspoint-1.6.0-wiki-4.4.0-x4-UNTESTED.bin'
-          base.UI_VERSION='1.6.0-wiki-4.4.0'
-          base.main()
-          battery=Path('freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp')
-          shutil.copy2(battery,base.OUT/'BatteryMonitor-4.4.0.cpp')
-          p=base.OUT/'build-manifest.json'
-          m=json.loads(p.read_text())
-          m.update(features=[
-              'Wiki 4.3.8 feature set',
-              '16-intent input queue sampled before render lock',
-              'Queued page turns dry-layout intermediate pages and refresh the final target',
-              'Portrait article button guides hidden by default with lower page footer',
-              'Status messages hidden by default with Wiki setting toggle',
-              'Interactive Button Guide screen',
-              'Left-aligned battery-level library descriptor',
-              'Toggleable Indexed/Classic Wiki home information layout',
-              'A-Z title browse and Category: prefix browse',
-              '1-percent interpolated original-X4 battery curve with 4.17V full hold band'
-          ],hardware_tested=False)
-          m['battery_percentage_model']='interpolated 1-percent Li-ion OCV curve; 4170mV display-full anchor; 4mV hysteresis'
-          m['battery_monitor_source_sha256']=hashlib.sha256(battery.read_bytes()).hexdigest()
-          p.write_text(json.dumps(m,indent=2)+'\n')
-          files=sorted(x for x in base.OUT.iterdir() if x.is_file() and x.name!='SHA256SUMS.txt')
-          (base.OUT/'SHA256SUMS.txt').write_text(''.join(f"{hashlib.sha256(x.read_bytes()).hexdigest()}  {x.name}\n" for x in files))
+          import hashlib,json,subprocess
+          d=Path('dist'); b=d/'crosspoint-1.6.0-wiki-4.4.1-x4-UNTESTED.bin'
+          manifest={
+            'ui_version':'1.6.0-wiki-4.4.1',
+            'target':'original Xteink X4 ESP32-C3',
+            'hardware_tested':False,
+            'image_kind':'application-only, not a merged full-flash image',
+            'features':['4.4.0 responsive input/battery/browse baseline','XML allocation failure containment','32 KiB XML article safety ceiling','XML heap diagnostics','format-label de-duplication','home button-guide toggle fix','compact button guide','Browse A-Z only','hold-to-scroll acceleration'],
+            'binary_bytes':b.stat().st_size,
+            'binary_sha256':hashlib.sha256(b.read_bytes()).hexdigest(),
+          }
+          (d/'build-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          files=[p for p in d.rglob('*') if p.is_file() and p.name!='SHA256SUMS.txt']
+          lines=[]
+          for p in sorted(files):
+            lines.append(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(d)}")
+          (d/'SHA256SUMS.txt').write_text('\n'.join(lines)+'\n')
           PY
 
-      - uses: actions/upload-artifact@v6
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v6
         with:
-          name: crosspoint-1.6.0-wiki-4.4.0-x4-UNTESTED
-          path: wiki-dist/
+          name: crosspoint-1.6.0-wiki-4.4.1-x4-UNTESTED
+          path: dist/
           if-no-files-found: error
 
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: wiki-beta440-build-log
+          name: wiki-beta441-build-log
           path: |
             wiki-build.log
-            wiki-package.log
           if-no-files-found: ignore
