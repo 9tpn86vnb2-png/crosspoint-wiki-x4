@@ -1,0 +1,165 @@
+name: X4 Wiki 4.4.0 responsive reader and browse
+
+on:
+  push:
+    branches: [wiki-x4-beta440-build]
+    paths:
+      - '.github/workflows/wiki-x4-beta440.yml'
+      - '.github/wiki440.patch.b64'
+      - '.github/wiki440_battery_patch.py'
+      - '.github/wiki440_contract_tests.py'
+      - '.github/WIKI440-NOTE.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wiki-x4-beta440-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zlib1g-dev
+
+      - name: Reconstruct and verify Wiki 4.3.7
+        run: |
+          set -euo pipefail
+          python scripts/wiki437_reconstruct.py
+          cat .github/wiki437.patch.00 .github/wiki437.patch.01 > /tmp/wiki437.b64
+          base64 -d /tmp/wiki437.b64 > /tmp/wiki437.patch.gz
+          echo '0ce46d6f2982dc4dc8e4f94c8a5c2e362b2892a70a3b4f27c446d9aab8d2313a  /tmp/wiki437.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/wiki437.patch.gz > /tmp/wiki437.patch
+          echo 'af0add591352f74ce14064450c105245de1b804272e7c25bd815cf025184f16b  /tmp/wiki437.patch' | sha256sum -c -
+          git apply --check /tmp/wiki437.patch
+          git apply /tmp/wiki437.patch
+          git diff --check
+          echo '34b9b2a246be1c5b4a13ceb4da186001068eca8fb6cf3df9aa8499e9eba7a56f  platformio.local.ini' | sha256sum -c -
+          echo 'ccbd10df5d409c139872c6813730cd267912903ee434738abe191e7374ed88be  src/activities/wiki/WikiActivity.cpp' | sha256sum -c -
+          echo 'ed536d1920e10b614c9735a9627ef305485a84e775511475ce05d3d1398f9103  src/activities/wiki/WikiActivity.h' | sha256sum -c -
+
+      - name: Reconstruct and verify Wiki 4.3.8
+        run: |
+          set -euo pipefail
+          base64 -d .github/wiki438.patch.b64 > /tmp/wiki438.patch.gz
+          echo '8699d4a22142ef57f43498f7a8c5010cf0c54a5aa79e43007ca3fe4fa462159d  /tmp/wiki438.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/wiki438.patch.gz > /tmp/wiki438.patch
+          echo '59c8d2a6638260820af432b545abe6a75b259e3d4ae22b3e7db4225533cfb81d  /tmp/wiki438.patch' | sha256sum -c -
+          git apply --check /tmp/wiki438.patch
+          git apply /tmp/wiki438.patch
+          git diff --check
+          echo 'bc7b23d817c8434b18216fbdab41b55ba44f250a8a6bc1c7289a586c3732b128  platformio.local.ini' | sha256sum -c -
+          echo '97872023f40b4385d7997a25694bb4b149d4ea8d799e0f374bc4120918bdf349  src/activities/wiki/WikiActivity.cpp' | sha256sum -c -
+          echo 'ed536d1920e10b614c9735a9627ef305485a84e775511475ce05d3d1398f9103  src/activities/wiki/WikiActivity.h' | sha256sum -c -
+
+      - name: Apply and test Wiki 4.4.0
+        run: |
+          set -euo pipefail
+          base64 -d .github/wiki440.patch.b64 > /tmp/wiki440.patch.gz
+          echo '5926ed3db81fa4d52f46ca5d483b1abc17450395e0d27fdfe693e934c00433fe  /tmp/wiki440.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/wiki440.patch.gz > /tmp/wiki440.patch
+          echo 'b3285b570b97e4f8bb17e8e5b9b142ba63bc4d66789737e16c3ed0aa4ccdcaf6  /tmp/wiki440.patch' | sha256sum -c -
+          git apply --check /tmp/wiki440.patch
+          git apply /tmp/wiki440.patch
+          python .github/wiki440_battery_patch.py
+          git diff --check
+          git -C freeink-sdk diff --check
+          echo '4d93b54aef969255046414e59e5ae74e982f0549fdc4ca6dc81a9346ac8d58a0  platformio.local.ini' | sha256sum -c -
+          echo '9853897ea445a7c5faf999d9002bafff2656f5a9ad900f3a3e79533451938486  src/activities/wiki/WikiActivity.cpp' | sha256sum -c -
+          echo '2f5e08a86262893c363abee8c842e231f7ca2cc653c7f4d5fa0bf005207940ed  src/activities/wiki/WikiActivity.h' | sha256sum -c -
+          python .github/wiki440_contract_tests.py
+          grep -q 'LIION_CURVE_MV' freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp
+          grep -q 'PERCENT_HYSTERESIS_MV = 4' freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp
+
+      - name: Restore compiler cache
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .cache
+          key: wiki-pio-v6-${{ runner.os }}-${{ hashFiles('platformio.ini','platformio.local.ini') }}
+          restore-keys: wiki-pio-v6-${{ runner.os }}-
+
+      - name: Install firmware build dependencies
+        run: |
+          python -m pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+          python -m pip install -r requirements.txt
+          python -m pip install 'littlefs-python>=0.16.0' 'fatfs-ng>=0.1.14' 'pyyaml>=6.0.2' 'rich-click>=1.8.6' 'zopfli>=0.2.2' 'intelhex>=2.3.0' 'rich>=14.0.0' 'urllib3<2' 'cryptography>=45.0.3' 'certifi>=2025.8.3' 'ecdsa>=0.19.1' 'bitstring>=4.3.1' 'reedsolo>=1.5.3,<1.8' 'esp-idf-size>=2.0.0' 'esp-coredump>=1.14.0' 'esptool>=5,<6'
+
+      - name: Refresh ESP32-C3 SDK metadata
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          (Path.home()/'.platformio/packages/framework-arduinoespressif32-libs/esp32c3/sdkconfig.crosspoint').unlink(missing_ok=True)
+          PY
+
+      - name: Build original X4 application
+        run: |
+          set -euo pipefail
+          pio run -e wiki_x4_beta 2>&1 | tee wiki-build.log
+
+      - name: Validate and package
+        run: |
+          set -euo pipefail
+          PYTHONPATH=scripts python - <<'PY' 2>&1 | tee wiki-package.log
+          import hashlib, json, shutil
+          from pathlib import Path
+          import wiki_package as base
+          base.NAME='crosspoint-1.6.0-wiki-4.4.0-x4-UNTESTED.bin'
+          base.UI_VERSION='1.6.0-wiki-4.4.0'
+          base.main()
+          battery=Path('freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp')
+          shutil.copy2(battery,base.OUT/'BatteryMonitor-4.4.0.cpp')
+          p=base.OUT/'build-manifest.json'
+          m=json.loads(p.read_text())
+          m.update(features=[
+              'Wiki 4.3.8 feature set',
+              '16-intent input queue sampled before render lock',
+              'Queued page turns dry-layout intermediate pages and refresh the final target',
+              'Portrait article button guides hidden by default with lower page footer',
+              'Status messages hidden by default with Wiki setting toggle',
+              'Interactive Button Guide screen',
+              'Left-aligned battery-level library descriptor',
+              'Toggleable Indexed/Classic Wiki home information layout',
+              'A-Z title browse and Category: prefix browse',
+              '1-percent interpolated original-X4 battery curve with 4.17V full hold band'
+          ],hardware_tested=False)
+          m['battery_percentage_model']='interpolated 1-percent Li-ion OCV curve; 4170mV display-full anchor; 4mV hysteresis'
+          m['battery_monitor_source_sha256']=hashlib.sha256(battery.read_bytes()).hexdigest()
+          p.write_text(json.dumps(m,indent=2)+'\n')
+          files=sorted(x for x in base.OUT.iterdir() if x.is_file() and x.name!='SHA256SUMS.txt')
+          (base.OUT/'SHA256SUMS.txt').write_text(''.join(f"{hashlib.sha256(x.read_bytes()).hexdigest()}  {x.name}\n" for x in files))
+          PY
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: crosspoint-1.6.0-wiki-4.4.0-x4-UNTESTED
+          path: wiki-dist/
+          if-no-files-found: error
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: wiki-beta440-build-log
+          path: |
+            wiki-build.log
+            wiki-package.log
+          if-no-files-found: ignore
