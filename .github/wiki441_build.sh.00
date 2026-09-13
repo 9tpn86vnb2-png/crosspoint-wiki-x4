@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+sudo apt-get update
+sudo apt-get install -y zlib1g-dev
+
+python scripts/wiki437_reconstruct.py
+cat .github/wiki437.patch.00 .github/wiki437.patch.01 > /tmp/wiki437.b64
+base64 -d /tmp/wiki437.b64 > /tmp/wiki437.patch.gz
+echo '0ce46d6f2982dc4dc8e4f94c8a5c2e362b2892a70a3b4f27c446d9aab8d2313a  /tmp/wiki437.patch.gz' | sha256sum -c -
+gzip -dc /tmp/wiki437.patch.gz > /tmp/wiki437.patch
+echo 'af0add591352f74ce14064450c105245de1b804272e7c25bd815cf025184f16b  /tmp/wiki437.patch' | sha256sum -c -
+git apply --check /tmp/wiki437.patch
+git apply /tmp/wiki437.patch
+echo '34b9b2a246be1c5b4a13ceb4da186001068eca8fb6cf3df9aa8499e9eba7a56f  platformio.local.ini' | sha256sum -c -
+
+base64 -d .github/wiki438.patch.b64 > /tmp/wiki438.patch.gz
+echo '8699d4a22142ef57f43498f7a8c5010cf0c54a5aa79e43007ca3fe4fa462159d  /tmp/wiki438.patch.gz' | sha256sum -c -
+gzip -dc /tmp/wiki438.patch.gz > /tmp/wiki438.patch
+echo '59c8d2a6638260820af432b545abe6a75b259e3d4ae22b3e7db4225533cfb81d  /tmp/wiki438.patch' | sha256sum -c -
+git apply --check /tmp/wiki438.patch
+git apply /tmp/wiki438.patch
+echo 'bc7b23d817c8434b18216fbdab41b55ba44f250a8a6bc1c7289a586c3732b128  platformio.local.ini' | sha256sum -c -
+
+base64 -d .github/wiki440.patch.b64 > /tmp/wiki440.patch.gz
+echo '5926ed3db81fa4d52f46ca5d483b1abc17450395e0d27fdfe693e934c00433fe  /tmp/wiki440.patch.gz' | sha256sum -c -
+gzip -dc /tmp/wiki440.patch.gz > /tmp/wiki440.patch
+echo 'b3285b570b97e4f8bb17e8e5b9b142ba63bc4d66789737e16c3ed0aa4ccdcaf6  /tmp/wiki440.patch' | sha256sum -c -
+git apply --check /tmp/wiki440.patch
+git apply /tmp/wiki440.patch
+python .github/wiki440_battery_patch.py
+git diff --check
+git -C freeink-sdk diff --check
+echo '4d93b54aef969255046414e59e5ae74e982f0549fdc4ca6dc81a9346ac8d58a0  platformio.local.ini' | sha256sum -c -
+echo '5d577099c2b79c329d812d2538b971b1c4b35667ac18e007be268cacbaf44def  src/activities/wiki/WikiArchive.cpp' | sha256sum -c -
+echo 'b3715e47c4f79d58f8cd99092879edb9a5250c89b4140440a92420cec1f24c34  src/activities/wiki/WikiArchive.h' | sha256sum -c -
+python .github/wiki440_contract_tests.py
