@@ -1,3 +1,4 @@
+# Trigger the verified 4.3.4 workflow after registration on this branch.
 name: X4 Wiki 4.3.4 verified build
 
 on:
