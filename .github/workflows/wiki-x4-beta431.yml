@@ -129,7 +129,7 @@ jobs:
             return static_cast<EpdFontFamily::Style>(style & (WikiText::Bold | WikiText::Italic));
           }
 
-          bool inlineSpace(char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\v'; }
+          bool inlineSpace(char c) { return c == ' ' || c == 9 || c == 10 || c == 11 || c == 13; }
           bool formattedInline(uint8_t style) { return (style & (WikiText::Bold | WikiText::Italic | WikiText::Link)) != 0; }
 
           size_t inlineStyleCluster(const char* text, size_t pos, size_t length, uint8_t currentStyle, uint8_t& nextStyle) {
