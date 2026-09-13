@@ -61,27 +61,6 @@ jobs:
           if s.count(old)!=1:
               raise SystemExit(f'Wiki 4.3.3 ref bound fix expected one match, found {s.count(old)}')
           p.write_text(s.replace(old,new,1))
-
-          p=Path('src/activities/wiki/MediaWikiXml.cpp')
-          s=p.read_text()
-          old='appendUtf8(out,cp);'
-          new='''if (cp <= 0x7fu) out.push_back(static_cast<char>(cp));
-                 else if (cp <= 0x7ffu) {
-                   out.push_back(static_cast<char>(0xc0u | (cp >> 6)));
-                   out.push_back(static_cast<char>(0x80u | (cp & 0x3fu)));
-                 } else if (cp <= 0xffffu) {
-                   out.push_back(static_cast<char>(0xe0u | (cp >> 12)));
-                   out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3fu)));
-                   out.push_back(static_cast<char>(0x80u | (cp & 0x3fu)));
-                 } else if (cp <= 0x10ffffu) {
-                   out.push_back(static_cast<char>(0xf0u | (cp >> 18)));
-                   out.push_back(static_cast<char>(0x80u | ((cp >> 12) & 0x3fu)));
-                   out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3fu)));
-                   out.push_back(static_cast<char>(0x80u | (cp & 0x3fu)));
-                 }'''
-          if s.count(old)!=1:
-              raise SystemExit(f'Wiki 4.3.3 UTF-8 entity fix expected one match, found {s.count(old)}')
-          p.write_text(s.replace(old,new,1))
           PYFIX
           git diff --check
           cat > /tmp/wiki433.expected <<'EOF'
