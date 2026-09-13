@@ -1,0 +1,33 @@
+helpers='''
+void trimInPlace(std::string& value) {
+  size_t a=0,b=value.size();
+  while(a<b&&asciiSpace(value[a])) ++a;
+  while(b>a&&asciiSpace(value[b-1])) --b;
+  if (a) value.erase(0,a);
+  if (b-a < value.size()) value.resize(b-a);
+}
+
+void compactWhitespaceInPlace(std::string& value) {
+  size_t write=0; int newlines=0;
+  for(size_t read=0; read<value.size(); ++read){
+    char c=value[read];
+    if(c=='\\n'){ while(write && value[write-1]==' ') --write; ++newlines; if(newlines<=2) value[write++]=c; }
+    else { newlines=0; if(c=='\\t') c=' '; if(c==' ' && write && value[write-1]==' ') continue; value[write++]=c; }
+  }
+  value.resize(write); trimInPlace(value);
+}
+
+void logXmlHeap(const char* stage, size_t textBytes=0) {
+#if WIKI_XML_HEAP_DIAGNOSTICS
+  const size_t freeBytes=heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  const size_t largest=heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  std::printf("[WIKI XML] %s text=%u free=%u largest=%u\\n", stage ? stage : "?", unsigned(textBytes), unsigned(freeBytes), unsigned(largest));
+#else
+  (void)stage; (void)textBytes;
+#endif
+}
+'''
+s=must_replace(s,anchor,anchor+helpers,'helpers')
+for a,b in [('TABLE_CAPTURE_MAX_TABLES = 12','TABLE_CAPTURE_MAX_TABLES = 8'),('TABLE_CAPTURE_MAX_ROWS = 192','TABLE_CAPTURE_MAX_ROWS = 128'),('TABLE_CAPTURE_MAX_CELLS = 384','TABLE_CAPTURE_MAX_CELLS = 256'),('TABLE_CAPTURE_MAX_CELL_BYTES = 12288','TABLE_CAPTURE_MAX_CELL_BYTES = 8192'),('simplifyWikitext(const std::string& source','simplifyWikitext(std::string source'),('simplifyWikitextImpl(const std::string& rawSource','simplifyWikitextImpl(std::string source')]: s=must_replace(s,a,b,a)
+s=must_replace(s,'return simplifyWikitextImpl(source,truncated,semantic,false);','return simplifyWikitextImpl(std::move(source),truncated,semantic,false);','move simplify input')
+s=must_replace(s,'  const std::string source = normalizeTableSource(rawSource, semantic);','  // Normalize only table-bearing articles, and replace the owned input so the original buffer is released before output grows.\n  if (source.find("{|" ) != std::string::npos) source = normalizeTableSource(source, semantic);','conditional table normalize')
