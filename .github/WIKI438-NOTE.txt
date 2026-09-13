@@ -1,0 +1,1 @@
+Wiki 4.3.8: centered top library strip, no compact article badge, reduced reader chrome height.
