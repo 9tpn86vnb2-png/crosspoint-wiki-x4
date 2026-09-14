@@ -1,4 +1,4 @@
-name: X4 Wiki 4.4.2 EPUB table helper cleanup
+name: X4 Wiki 4.5.0 EPUB table renderer and size optimization
 on:
   push:
     branches: [wiki-x4-beta441-build]
@@ -14,7 +14,10 @@ on:
       - '.github/wiki441_qol.patch.gz.b64'
       - '.github/wiki442_epub_patch.py'
       - '.github/wiki442_contract_tests.py'
-      - '.github/wiki442_package.sh'
+      - '.github/wiki450_apply.py'
+      - '.github/wiki450_contract_tests.py'
+      - '.github/wiki450_scoped_exceptions.py'
+      - '.github/wiki450_package.sh'
   workflow_dispatch:
 permissions:
   contents: read
@@ -36,15 +39,31 @@ jobs:
         run: bash .github/wiki441_build.sh.01a1
       - name: Verify 4.4.1 contracts
         run: bash .github/wiki441_verify.sh
-      - name: Apply 4.4.2 EPUB table helper cleanup
+      - name: Apply 4.4.2 EPUB helper cleanup
         run: python .github/wiki442_epub_patch.py
       - name: Verify 4.4.2 EPUB contracts
         run: python .github/wiki442_contract_tests.py
+      - name: Apply 4.5.0 table renderer and scoped exceptions
+        run: python .github/wiki450_apply.py
+      - name: Verify 4.5.0 contracts
+        run: python .github/wiki450_contract_tests.py
       - name: Install toolchain and build original X4
         run: bash .github/wiki441_toolchain.sh
-      - name: Package 4.4.2
-        run: bash .github/wiki442_package.sh
+      - name: Require a real flash-size improvement over 4.4.2
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          new = Path('.pio/build/wiki_x4_beta/firmware.bin').stat().st_size
+          old = 6025200
+          print(f'4.4.2 firmware.bin: {old} bytes')
+          print(f'4.5.0 firmware.bin: {new} bytes')
+          print(f'Saved: {old-new} bytes')
+          if new >= old:
+              raise SystemExit('4.5.0 did not reduce flash image size')
+          PY
+      - name: Package 4.5.0
+        run: bash .github/wiki450_package.sh
       - uses: actions/upload-artifact@v6
         with:
-          name: crosspoint-1.6.0-wiki-4.4.2-x4-UNTESTED
+          name: crosspoint-1.6.0-wiki-4.5.0-x4-UNTESTED
           path: wiki-dist/
