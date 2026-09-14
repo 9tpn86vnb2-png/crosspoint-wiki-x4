@@ -12,7 +12,7 @@ def expect(label, condition):
 pio = Path("platformio.local.ini").read_text()
 hal = Path("lib/hal/HalPowerManager.h").read_text()
 main = Path("src/main.cpp").read_text()
-reader = Path("src/activities/reader/ReaderActivity.cpp").read_text()
+epub_h = Path("src/activities/reader/EpubReaderActivity.h").read_text()
 utils = Path("src/activities/reader/ReaderUtils.h").read_text()
 
 expect("4.6.2 version", "1.6.0-wiki-4.6.2" in pio and "1.6.0-wiki-4.6.1" not in pio)
@@ -29,7 +29,7 @@ expect("global content Power Saving retained",
 expect("explicit ESP light sleep remains disabled",
        "esp_light_sleep_start" not in main)
 expect("10-turn deferred EPUB checkpoint retained",
-       "POWER_SAVE_PAGE_TURN_CHECKPOINT = 10" in reader)
+       "POWER_SAVE_PROGRESS_TURN_INTERVAL = 10" in epub_h)
 expect("adaptive Power Saving refresh retained",
        "effectiveRefreshFrequency" in utils)
 expect("4.6.2 comment documents first-click debounce reliability",
