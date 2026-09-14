@@ -14,7 +14,7 @@ class RecentBooksActivity final : public UiListActivity {
   void onExit() override;
 
  private:
-  int listCount() const override { return static_cast<int>(recentBooks.size()); }
+  int listCount() const override { return static_cast<int>(rowItems.size()); }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   void onRowLongPress(int index) override;
@@ -27,5 +27,6 @@ class RecentBooksActivity final : public UiListActivity {
   std::vector<freeink::ui::ListItem> rowItems;
   void rebuildRowItems();
   void loadRecentBooks();
+  int bookIndexForRow(int row) const { return finishedMode ? row : row - 1; }
   void promptRemoveBook(const std::string& path, const std::string& title);
 };
