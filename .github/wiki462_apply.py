@@ -10,13 +10,13 @@ def replace_once(path, old, new, label):
     p.write_text(s.replace(old, new, 1))
 
 
-# 4.6.2 is an input-responsiveness hotfix on top of 4.6.1.
-replace_once(
-    "platformio.local.ini",
-    "1.6.0-wiki-4.6.1",
-    "1.6.0-wiki-4.6.2",
-    "version",
-)
+# 4.6.2 is an input-responsiveness hotfix on top of 4.6.1. The build profile
+# carries the version in more than one place, so update every 4.6.1 occurrence.
+p = Path("platformio.local.ini")
+s = p.read_text()
+if "1.6.0-wiki-4.6.1" not in s:
+    raise SystemExit("4.6.2 apply: 4.6.1 version anchor not found")
+p.write_text(s.replace("1.6.0-wiki-4.6.1", "1.6.0-wiki-4.6.2"))
 
 # The original X4 navigation keys are ADC ladders and InputManager debounces a
 # raw transition only after it survives a second matching sample. At 100 ms,
