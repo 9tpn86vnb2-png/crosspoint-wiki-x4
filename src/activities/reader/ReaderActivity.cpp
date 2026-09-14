@@ -26,7 +26,6 @@ ReaderActivity::ReaderActivity(const char* name, GfxRenderer& renderer, MappedIn
 
 std::unique_ptr<ReaderActivity> ReaderActivity::create(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                        std::string path, const bool allowFastInitialRefresh) {
-  // ActivityManager requires heap ownership; each branch allocates exactly one screen-lifetime object.
   std::unique_ptr<ReaderActivity> activity;
   if (FsHelpers::hasXtcExtension(path)) {
     activity = makeUniqueNoThrow<XtcReaderActivity>(renderer, mappedInput, std::move(path), allowFastInitialRefresh);
@@ -36,9 +35,7 @@ std::unique_ptr<ReaderActivity> ReaderActivity::create(GfxRenderer& renderer, Ma
     activity = makeUniqueNoThrow<EpubReaderActivity>(renderer, mappedInput, std::move(path), allowFastInitialRefresh);
   }
 
-  if (!activity) {
-    LOG_ERR("READER", "OOM: reader activity");
-  }
+  if (!activity) LOG_ERR("READER", "OOM: reader activity");
   return activity;
 }
 
@@ -98,9 +95,7 @@ bool ReaderActivity::endOfBookMenuActive() const {
 }
 
 bool ReaderActivity::handleEndOfBookMenu(const bool suppressConfirmRelease) {
-  if (suppressConfirmRelease || !endOfBookMenuActive()) {
-    return false;
-  }
+  if (suppressConfirmRelease || !endOfBookMenuActive()) return false;
 
   std::string openPath;
   switch (endOfBookOptions->handleMenuInput(mappedInput, &openPath)) {
@@ -127,9 +122,7 @@ bool ReaderActivity::handleEndOfBookMenu(const bool suppressConfirmRelease) {
 bool ReaderActivity::handleEndOfBookPageTurn(const bool prevTriggered, const bool nextTriggered) {
   if (!isAtEndOfBook()) return false;
 
-  if (endOfBookOptionsReady.load(std::memory_order_acquire) && endOfBookOptions->menuActive()) {
-    return true;
-  }
+  if (endOfBookOptionsReady.load(std::memory_order_acquire) && endOfBookOptions->menuActive()) return true;
   if (nextTriggered) {
     onGoHome();
   } else if (prevTriggered) {
@@ -140,6 +133,11 @@ bool ReaderActivity::handleEndOfBookPageTurn(const bool prevTriggered, const boo
 }
 
 void ReaderActivity::loop() {
+  if (isAtEndOfBook() && !finishedRecorded) {
+    RECENT_BOOKS.markFinished(bookPath, getBookTitle(), getBookAuthor(), getBookThumbBmpPath());
+    finishedRecorded = true;
+  }
+
   clearEndOfBookOptionsIfNeeded();
   if (handleEndOfBookMenu()) return;
   if (handleFormatInput()) return;
@@ -157,17 +155,11 @@ void ReaderActivity::loop() {
       !fromTilt && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP && heldMs >= ReaderUtils::SKIP_HOLD_MS;
 
   if (prevTriggered) {
-    if (skip) {
-      skipPages(-10);
-    } else {
-      pageTurn(false);
-    }
+    if (skip) skipPages(-10);
+    else pageTurn(false);
   } else {
-    if (skip) {
-      skipPages(10);
-    } else {
-      pageTurn(true);
-    }
+    if (skip) skipPages(10);
+    else pageTurn(true);
   }
   requestUpdate();
 }
@@ -181,8 +173,6 @@ void ReaderActivity::render(RenderLock&&) {
     renderer.clearScreen();
     if (endOfBookOptions) {
       endOfBookOptions->loadOnce(bookPath);
-      // Release-publish AFTER loadOnce() so the main task's acquire load can't
-      // observe an object whose names/selector are still being populated.
       endOfBookOptionsReady.store(true, std::memory_order_release);
       endOfBookOptions->render(renderer, mappedInput);
     }
