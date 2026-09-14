@@ -1,4 +1,4 @@
-name: X4 Wiki 4.6.1 leaf icon hotfix
+name: X4 Wiki 4.6.2 responsive Power Saving hotfix
 on:
   push:
     branches: [wiki-x4-beta441-build]
@@ -38,6 +38,9 @@ on:
       - '.github/wiki461_apply.py'
       - '.github/wiki461_contract_tests.py'
       - '.github/wiki461_package.sh'
+      - '.github/wiki462_apply.py'
+      - '.github/wiki462_contract_tests.py'
+      - '.github/wiki462_package.sh'
   workflow_dispatch:
 permissions:
   contents: read
@@ -91,6 +94,10 @@ jobs:
         run: python .github/wiki461_apply.py
       - name: Verify 4.6.1 leaf contracts
         run: python .github/wiki461_contract_tests.py
+      - name: Apply 4.6.2 responsive Power Saving input hotfix
+        run: python .github/wiki462_apply.py
+      - name: Verify 4.6.2 input contracts
+        run: python .github/wiki462_contract_tests.py
       - name: Install toolchain and build original X4
         run: bash .github/wiki441_toolchain.sh
       - name: Compare flash size
@@ -98,25 +105,25 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           new = Path('.pio/build/wiki_x4_beta/firmware.bin').stat().st_size
-          v460 = 5539696
+          v461 = 5539840
           v442 = 6025200
           slot = 6553600
           print(f'4.4.2 firmware.bin: {v442} bytes')
-          print(f'4.6.0 firmware.bin: {v460} bytes')
-          print(f'4.6.1 firmware.bin: {new} bytes')
-          print(f'Change vs 4.6.0: {new-v460:+d} bytes')
+          print(f'4.6.1 firmware.bin: {v461} bytes')
+          print(f'4.6.2 firmware.bin: {new} bytes')
+          print(f'Change vs 4.6.1: {new-v461:+d} bytes')
           print(f'Saved vs 4.4.2: {v442-new} bytes')
           print(f'Application slot headroom: {slot-new} bytes')
-          if new > v460 + 8192:
-              raise SystemExit('4.6.1 leaf-only hotfix grew unexpectedly')
+          if new > v461 + 8192:
+              raise SystemExit('4.6.2 input-only hotfix grew unexpectedly')
           if new >= v442:
-              raise SystemExit('4.6.1 lost the 4.5.x flash optimization')
+              raise SystemExit('4.6.2 lost the 4.5.x flash optimization')
           if new >= slot:
-              raise SystemExit('4.6.1 does not fit the original X4 app slot')
+              raise SystemExit('4.6.2 does not fit the original X4 app slot')
           PY
-      - name: Package 4.6.1
-        run: bash .github/wiki461_package.sh
+      - name: Package 4.6.2
+        run: bash .github/wiki462_package.sh
       - uses: actions/upload-artifact@v6
         with:
-          name: crosspoint-1.6.0-wiki-4.6.1-x4-UNTESTED
+          name: crosspoint-1.6.0-wiki-4.6.2-x4-UNTESTED
           path: wiki-dist/
