@@ -25,7 +25,9 @@ on:
       - '.github/wiki452_contract_tests.py'
       - '.github/wiki452_package.sh'
       - '.github/wiki453_apply.py'
+      - '.github/wiki453_apply.b64.*'
       - '.github/wiki453_contract_tests.py'
+      - '.github/wiki453_contract_tests.b64.*'
       - '.github/wiki453_package.sh'
   workflow_dispatch:
 permissions:
