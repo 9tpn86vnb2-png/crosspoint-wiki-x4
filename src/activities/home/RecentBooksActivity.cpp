@@ -4,7 +4,6 @@
 #include <HalStorage.h>
 #include <I18n.h>
 
-#include <algorithm>
 #include <memory>
 
 #include "MappedInputManager.h"
@@ -30,7 +29,17 @@ void RecentBooksActivity::loadRecentBooks() {
 
 void RecentBooksActivity::rebuildRowItems() {
   rowItems.clear();
-  rowItems.reserve(recentBooks.size());
+  rowItems.reserve(recentBooks.size() + (finishedMode ? 0 : 1));
+
+  if (!finishedMode) {
+    fui::ListItem section;
+    section.label = "Finished Books";
+    section.subtitle = "Books you have completed";
+    section.icon = listIconFor(Book, 32);
+    section.actionValue = 0;
+    rowItems.push_back(section);
+  }
+
   for (const auto& book : recentBooks) {
     fui::ListItem item;
     item.label = book.title.empty() ? book.path.c_str() : book.title.c_str();
@@ -39,20 +48,6 @@ void RecentBooksActivity::rebuildRowItems() {
     item.actionValue = static_cast<int16_t>(rowItems.size());
     rowItems.push_back(item);
   }
-
-  const auto count = static_cast<uint32_t>(recentBooks.size());
-  renderer.prewarmFallbackText(
-      uiScaleSpec().smallFontId,
-      [](const void* ctx, uint32_t i) -> const char* {
-        return (*static_cast<const std::vector<RecentBook>*>(ctx))[i].title.c_str();
-      },
-      &recentBooks, count, EpdFontFamily::BOLD);
-  renderer.prewarmFallbackText(
-      uiScaleSpec().smallFontId,
-      [](const void* ctx, uint32_t i) -> const char* {
-        return (*static_cast<const std::vector<RecentBook>*>(ctx))[i].author.c_str();
-      },
-      &recentBooks, count);
 }
 
 void RecentBooksActivity::onEnter() {
@@ -67,32 +62,50 @@ void RecentBooksActivity::onExit() {
   recentBooks.clear();
 }
 
-void RecentBooksActivity::activateIndex(const int index) {
-  if (index < 0 || index >= listCount()) return;
+void RecentBooksActivity::activateIndex(const int row) {
+  if (row < 0 || row >= listCount()) return;
   app.clearTapFlash();
+
+  if (!finishedMode && row == 0) {
+    finishedMode = true;
+    name = "FinishedBooks";
+    nav.selected = 0;
+    nav.top = 0;
+    loadRecentBooks();
+    requestUpdate(true);
+    return;
+  }
+
+  const int index = bookIndexForRow(row);
+  if (index < 0 || index >= static_cast<int>(recentBooks.size())) return;
+
   if (finishedMode && !Storage.exists(recentBooks[index].path.c_str())) {
     RECENT_BOOKS.removeFinishedByPath(recentBooks[index].path);
     loadRecentBooks();
-    if (recentBooks.empty()) nav.selected = 0;
+    if (rowItems.empty()) nav.selected = 0;
     else if (nav.selected >= listCount()) nav.selected = listCount() - 1;
     nav.follow(listCount());
     requestUpdate(true);
     return;
   }
+
   onSelectBook(recentBooks[index].path);
 }
 
-void RecentBooksActivity::onRowLongPress(const int index) {
-  if (index < 0 || index >= listCount()) return;
+void RecentBooksActivity::onRowLongPress(const int row) {
+  if (row < 0 || row >= listCount()) return;
+  if (!finishedMode && row == 0) return;
+  const int index = bookIndexForRow(row);
+  if (index < 0 || index >= static_cast<int>(recentBooks.size())) return;
   app.clearTapFlash();
   promptRemoveBook(recentBooks[index].path, recentBooks[index].title);
 }
 
 bool RecentBooksActivity::handleButtons() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    if (!recentBooks.empty() && nav.selected < listCount()) {
-      if (mappedInput.getHeldTime() >= LONG_PRESS_MS) {
-        promptRemoveBook(recentBooks[nav.selected].path, recentBooks[nav.selected].title);
+    if (!rowItems.empty() && nav.selected < listCount()) {
+      if (mappedInput.getHeldTime() >= LONG_PRESS_MS && (finishedMode || nav.selected != 0)) {
+        onRowLongPress(nav.selected);
       } else {
         activateIndex(nav.selected);
       }
@@ -101,7 +114,16 @@ bool RecentBooksActivity::handleButtons() {
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    onGoHome(finishedMode ? HomeMenuItem::FINISHED_BOOKS : HomeMenuItem::RECENTS);
+    if (finishedMode) {
+      finishedMode = false;
+      name = "RecentBooks";
+      nav.selected = 0;
+      nav.top = 0;
+      loadRecentBooks();
+      requestUpdate(true);
+    } else {
+      onGoHome(HomeMenuItem::RECENTS);
+    }
     return true;
   }
 
@@ -115,7 +137,7 @@ void RecentBooksActivity::promptRemoveBook(const std::string& path, const std::s
     if (removed) {
       closeRouting();
       loadRecentBooks();
-      if (recentBooks.empty()) nav.selected = 0;
+      if (rowItems.empty()) nav.selected = 0;
       else if (nav.selected >= listCount()) nav.selected = listCount() - 1;
       nav.follow(listCount());
       requestUpdate(true);
@@ -133,7 +155,7 @@ void RecentBooksActivity::buildScreen(UiScreen& screen) {
                                                 static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
-  if (recentBooks.empty()) {
+  if (rowItems.empty()) {
     screen.centeredText(finishedMode ? "No finished books yet" : tr(STR_NO_RECENT_BOOKS), screen.theme().bodyText);
     return;
   }
@@ -151,7 +173,7 @@ void RecentBooksActivity::buildScreen(UiScreen& screen) {
 }
 
 void RecentBooksActivity::drawFooter() {
-  const bool empty = recentBooks.empty();
+  const bool empty = rowItems.empty();
   const auto labels = mappedInput.mapLabels(tr(STR_HOME), empty ? "" : tr(STR_OPEN), empty ? "" : tr(STR_DIR_UP),
                                             empty ? "" : tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
