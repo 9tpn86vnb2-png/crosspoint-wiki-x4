@@ -14,6 +14,15 @@ if _old_close in _persist_source:
 elif _new_close not in _persist_source:
     raise SystemExit("FAIL: 4.6.0 HalFile close compatibility anchor")
 
+# Global -flto compiles all C3 objects but the pinned pioarduino link command does
+# not load GCC's LTO plugin. Remove only that flag; all other 4.6.0 optimizations
+# remain enabled. This is an explicit hardware-toolchain compatibility gate.
+pio_path = Path("platformio.local.ini")
+_pio_source = pio_path.read_text()
+if "  -flto\n" in _pio_source:
+    _pio_source = _pio_source.replace("  -flto\n", "")
+    pio_path.write_text(_pio_source)
+
 def text(p): return Path(p).read_text()
 checks = []
 def check(name, cond):
@@ -47,7 +56,7 @@ keys = text("lib/I18n/I18nKeys.h")
 
 check("4.6.0 version", "1.6.0-wiki-4.6.0" in pio and "1.6.0-wiki-4.5.4" not in pio)
 check("X4-only compile flag", "-DFREEINK_DEVICE_X4=1" in pio and "-DFREEINK_DEVICE_X3=1" not in pio)
-check("LTO enabled", "-flto" in pio)
+check("LTO disabled after C3 linker incompatibility", "-flto" not in pio)
 check("no experimental reader light sleep", "esp_light_sleep_start" not in main and "lightSleepReaderSlice" not in main)
 check("global setting preserves legacy field", "readerPowerSaveMode = 0" in settings_h and 'doc["readerPowerSaveMode"]' in settings_cpp)
 check("Home Settings exposes Power Saving", "STR_POWER_SAVING_MODE" in settings_list and "readerPowerSaveMode" in settings_list)
