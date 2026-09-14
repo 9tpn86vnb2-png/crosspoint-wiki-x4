@@ -33,7 +33,7 @@ check('normal idle behavior retained', 'idleMs >= HalPowerManager::IDLE_POWER_SA
 check('Power Save default remains off', 'readerPowerSaveMode = 0' in text('src/CrossPointSettings.h'))
 check('10-turn checkpoint retained', 'POWER_SAVE_PROGRESS_TURN_INTERVAL = 10' in text('src/activities/reader/EpubReaderActivity.h'))
 check('exit flush retained', 'flushProgressIfDirty()' in epub and 'onExit' in epub)
-check('manual Mark as Finished retained', 'MARK_AS_FINISHED' in epub and 'RECENT_BOOKS.markFinished' in epub)
+check('manual Mark as Finished retained', 'Mark as Finished' in menu and 'RECENT_BOOKS.markFinished' in epub)
 check('automatic Finished Books completion retained', 'recordFinishedBookIfNeeded' in epub)
 check('table cell left alignment retained', 'TEXT_ALIGN_LEFT' in parser)
 check('table grid metadata retained', 'TableGrid' in page or 'TABLE_GRID' in page)
