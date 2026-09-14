@@ -1,48 +1,77 @@
 #!/usr/bin/env bash
 set -euo pipefail
-bash .github/wiki453_package.sh
 python - <<'PY'
 from pathlib import Path
-import hashlib, json, shutil, tarfile
-
-# wiki453_package.sh already produced a fully validated package; rename/version
-# its 4.5.3 outputs after the 4.5.4 app descriptor has been built.
-d = Path('wiki-dist')
-old = d / 'crosspoint-1.6.0-wiki-4.5.3-x4-UNTESTED.bin'
-new = d / 'crosspoint-1.6.0-wiki-4.5.4-x4-UNTESTED.bin'
-if not old.exists():
-    raise SystemExit('4.5.4 package: expected 4.5.3-named packaged bin missing')
-old.rename(new)
-
-manifest_path = d / 'build-manifest.json'
-manifest = json.loads(manifest_path.read_text())
-manifest['artifact'] = new.name
-manifest['ui_version'] = '1.6.0-wiki-4.5.4'
-manifest['expected_app_descriptor_version'] = '1.6.0-wiki-4.5.4'
-manifest['image']['app_descriptor_version'] = '1.6.0-wiki-4.5.4'
-manifest['image']['bytes'] = new.stat().st_size
-manifest['image']['sha256'] = hashlib.sha256(new.read_bytes()).hexdigest()
-for path in ['.github/wiki454_apply.py', '.github/wiki454_contract_tests.py']:
-    manifest.setdefault('compiled_and_supporting_source_sha256', {})[path] = hashlib.sha256(Path(path).read_bytes()).hexdigest()
-manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
-
-for name in ['WIKI_BETA.md', 'WIKI_VALIDATION.md']:
-    p = d / name
-    if p.exists():
-        p.write_text(p.read_text().replace('4.5.3', '4.5.4'))
-
-# Rebuild changed-source tar to include the hotfix support files as well.
-tar_path = d / 'wiki-changed-source.tar.gz'
-with tarfile.open(tar_path, 'a:gz') if False else tarfile.open('/tmp/wiki454-extra.tar.gz', 'w:gz') as tf:
-    for path in ['.github/wiki454_apply.py', '.github/wiki454_contract_tests.py']:
-        tf.add(path, arcname=path)
-# Keep the original source archive; support scripts are independently hashed in manifest.
-
-sums = []
-for p in sorted(d.iterdir()):
-    if p.name == 'SHA256SUMS.txt' or not p.is_file():
-        continue
-    sums.append(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}")
-(d / 'SHA256SUMS.txt').write_text('\n'.join(sums) + '\n')
-print(f'4.5.4 packaged: {new.stat().st_size} bytes, SHA-256 {hashlib.sha256(new.read_bytes()).hexdigest()}')
+p = Path('scripts/wiki_package.py')
+s = p.read_text()
+for old in [
+    'crosspoint-1.6.0-wiki-beta1-x4-UNTESTED.bin',
+    'crosspoint-1.6.0-wiki-4.4.1-x4-UNTESTED.bin',
+    'crosspoint-1.6.0-wiki-4.4.2-x4-UNTESTED.bin',
+    'crosspoint-1.6.0-wiki-4.5.0-x4-UNTESTED.bin',
+    'crosspoint-1.6.0-wiki-4.5.1-x4-UNTESTED.bin',
+    'crosspoint-1.6.0-wiki-4.5.2-x4-UNTESTED.bin',
+    'crosspoint-1.6.0-wiki-4.5.3-x4-UNTESTED.bin',
+]:
+    s = s.replace(old, 'crosspoint-1.6.0-wiki-4.5.4-x4-UNTESTED.bin')
+for old in [
+    "UI_VERSION = '1.6.0-wiki-beta1'",
+    "UI_VERSION = '1.6.0-wiki-4.4.1'",
+    "UI_VERSION = '1.6.0-wiki-4.4.2'",
+    "UI_VERSION = '1.6.0-wiki-4.5.0'",
+    "UI_VERSION = '1.6.0-wiki-4.5.1'",
+    "UI_VERSION = '1.6.0-wiki-4.5.2'",
+    "UI_VERSION = '1.6.0-wiki-4.5.3'",
+]:
+    s = s.replace(old, "UI_VERSION = '1.6.0-wiki-4.5.4'")
+needle = "    source_hashes = {name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in source_names}\n"
+extras = [
+    'lib/Epub/Epub/Page.cpp',
+    'lib/Epub/Epub/Page.h',
+    'lib/Epub/Epub/Section.cpp',
+    'lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp',
+    'lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h',
+    'lib/hal/HalPowerManager.cpp',
+    'lib/hal/HalPowerManager.h',
+    '.github/wiki450_scoped_exceptions.py',
+    '.github/wiki451_apply.py',
+    '.github/wiki452_apply.py',
+    '.github/wiki453_apply.py',
+    '.github/wiki453_apply.b64.00',
+    '.github/wiki453_apply.b64.01',
+    '.github/wiki453_apply.b64.02',
+    '.github/wiki453_apply.b64.03',
+    '.github/wiki453_apply.b64.04',
+    '.github/wiki453_contract_tests.py',
+    '.github/wiki453_contract_tests.b64.00',
+    '.github/wiki453_contract_tests.b64.01',
+    '.github/wiki454_apply.py',
+    '.github/wiki454_contract_tests.py',
+    'src/CrossPointSettings.cpp',
+    'src/CrossPointSettings.h',
+    'src/FinishedBooksStore.cpp',
+    'src/FinishedBooksStore.h',
+    'src/RecentBooksStore.cpp',
+    'src/RecentBooksStore.h',
+    'src/activities/home/RecentBooksActivity.cpp',
+    'src/activities/home/RecentBooksActivity.h',
+    'src/activities/reader/ReaderActivity.cpp',
+    'src/activities/reader/ReaderActivity.h',
+    'src/activities/reader/EpubReaderActivity.cpp',
+    'src/activities/reader/EpubReaderActivity.h',
+    'src/activities/reader/EpubReaderMenuActivity.cpp',
+    'src/activities/reader/EpubReaderMenuActivity.h',
+    'src/components/icons/customListIcons.h',
+    'src/main.cpp',
+]
+replacement = "    source_names += " + repr(extras) + "\n" + needle
+if needle not in s:
+    raise SystemExit('4.5.4 package: source manifest anchor not found')
+s = s.replace(needle, replacement, 1)
+if "NAME = 'crosspoint-1.6.0-wiki-4.5.4-x4-UNTESTED.bin'" not in s:
+    raise SystemExit('4.5.4 package: artifact name replacement failed')
+if "UI_VERSION = '1.6.0-wiki-4.5.4'" not in s:
+    raise SystemExit('4.5.4 package: UI version replacement failed')
+p.write_text(s)
 PY
+python scripts/wiki_package.py 2>&1 | tee wiki-package.log
