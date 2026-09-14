@@ -1,4 +1,4 @@
-name: X4 Wiki 4.5.1 typography, Finished Books, and efficiency
+name: X4 Wiki 4.5.2 Finished Books completion and UI fixes
 on:
   push:
     branches: [wiki-x4-beta441-build]
@@ -21,6 +21,9 @@ on:
       - '.github/wiki451_contract_tests.py'
       - '.github/wiki451_package.sh'
       - '.github/wiki451/**'
+      - '.github/wiki452_apply.py'
+      - '.github/wiki452_contract_tests.py'
+      - '.github/wiki452_package.sh'
   workflow_dispatch:
 permissions:
   contents: read
@@ -54,6 +57,10 @@ jobs:
         run: python .github/wiki451_apply.py
       - name: Verify 4.5.1 contracts
         run: python .github/wiki451_contract_tests.py
+      - name: Apply 4.5.2 Finished Books completion and UI fixes
+        run: python .github/wiki452_apply.py
+      - name: Verify 4.5.2 contracts
+        run: python .github/wiki452_contract_tests.py
       - name: Install toolchain and build original X4
         run: bash .github/wiki441_toolchain.sh
       - name: Compare flash size
@@ -61,19 +68,19 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           new = Path('.pio/build/wiki_x4_beta/firmware.bin').stat().st_size
-          v450 = 5539648
+          v451 = 5543968
           v442 = 6025200
           print(f'4.4.2 firmware.bin: {v442} bytes')
-          print(f'4.5.0 firmware.bin: {v450} bytes')
-          print(f'4.5.1 firmware.bin: {new} bytes')
-          print(f'Change vs 4.5.0: {new-v450:+d} bytes')
+          print(f'4.5.1 firmware.bin: {v451} bytes')
+          print(f'4.5.2 firmware.bin: {new} bytes')
+          print(f'Change vs 4.5.1: {new-v451:+d} bytes')
           print(f'Saved vs 4.4.2: {v442-new} bytes')
           if new >= v442:
-              raise SystemExit('4.5.1 lost the 4.5.x flash optimization')
+              raise SystemExit('4.5.2 lost the 4.5.x flash optimization')
           PY
-      - name: Package 4.5.1
-        run: bash .github/wiki451_package.sh
+      - name: Package 4.5.2
+        run: bash .github/wiki452_package.sh
       - uses: actions/upload-artifact@v6
         with:
-          name: crosspoint-1.6.0-wiki-4.5.1-x4-UNTESTED
+          name: crosspoint-1.6.0-wiki-4.5.2-x4-UNTESTED
           path: wiki-dist/
