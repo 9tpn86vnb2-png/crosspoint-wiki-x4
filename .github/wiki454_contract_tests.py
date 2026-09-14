@@ -34,7 +34,7 @@ check('Power Save default remains off', 'readerPowerSaveMode = 0' in text('src/C
 check('10-turn checkpoint retained', 'POWER_SAVE_PROGRESS_TURN_INTERVAL = 10' in text('src/activities/reader/EpubReaderActivity.h'))
 check('exit flush retained', 'flushProgressIfDirty()' in epub and 'onExit' in epub)
 check('manual Mark as Finished retained', 'Mark as Finished' in menu and 'RECENT_BOOKS.markFinished' in epub)
-check('automatic Finished Books completion retained', 'recordFinishedBookIfNeeded' in epub)
+check('automatic Finished Books completion retained', epub.count('RECENT_BOOKS.markFinished') >= 2)
 check('table cell left alignment retained', 'TEXT_ALIGN_LEFT' in parser)
 check('table grid metadata retained', 'TableGrid' in page or 'TABLE_GRID' in page)
 check('menu describes safe behavior', 'Power Save Mode - lower idle CPU and fewer SD writes' in menu)
