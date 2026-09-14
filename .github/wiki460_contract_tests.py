@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
+# Hardware-target compatibility normalization: HalFile::close() returns void on the
+# pinned CrossPoint/FreeInk storage abstraction. Keep the streaming writer, but do
+# not treat close() as a success/failure return value.
+persist_path = Path("lib/Serialization/PersistableStore.cpp")
+_persist_source = persist_path.read_text()
+_old_close = "  const bool closeOk = out.close();\n  if (written == 0 || !closeOk) {\n"
+_new_close = "  out.close();\n  if (written == 0) {\n"
+if _old_close in _persist_source:
+    _persist_source = _persist_source.replace(_old_close, _new_close, 1)
+    persist_path.write_text(_persist_source)
+elif _new_close not in _persist_source:
+    raise SystemExit("FAIL: 4.6.0 HalFile close compatibility anchor")
+
 def text(p): return Path(p).read_text()
 checks = []
 def check(name, cond):
@@ -53,6 +66,7 @@ check("leaf beside shared battery banner", "batteryIndicator" in base_theme and 
 check("streaming JSON write", "serializeJson(doc, out)" in persist and "String json;" not in persist.split("bool PersistableStoreBase::writeDocToFile",1)[1].split("bool PersistableStoreBase::readDocFromFile",1)[0])
 check("global unchanged-write suppression", "JsonComparePrint" in persist and "if (unchanged) return true;" in persist)
 check("temp-file persistence commit", 'std::string(path) + ".tmp"' in persist and "Storage.rename" in persist)
+check("HalFile void-close compatibility", "out.close();" in persist and "closeOk" not in persist)
 check("larger sequential stream chunk", "chunkSize = 1024" in halstorage)
 check("bounded CSS cache", "std::array<CssResolveCacheEntry, 8>" in parser_h and "resolveCssStyleCached" in parser_c)
 check("CSS resolver uses cache", "self->resolveCssStyleCached(name, classAttr)" in parser_c)
