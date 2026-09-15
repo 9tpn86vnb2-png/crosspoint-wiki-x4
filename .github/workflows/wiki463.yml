@@ -59,6 +59,8 @@ jobs:
           python .github/wiki463_reader.py
           python .github/wiki463_search.py
           python .github/wiki463_render.py
+          # The baseline declares its default RenderLock constructor explicit.
+          sed -i 's/  RenderLock();/  explicit RenderLock();/g' .github/wiki463_review.py
           python .github/wiki463_review.py
           python .github/wiki463_compile_fixes.py
           python .github/wiki463_finish.py prepare
@@ -69,14 +71,14 @@ jobs:
             mkdir -p .pio/libdeps/wiki_x4_beta
             git clone --depth 1 --branch v7.4.2 https://github.com/bblanchon/ArduinoJson.git .pio/libdeps/wiki_x4_beta/ArduinoJson
           fi
-          python .github/wiki463_finish.py test 2>&1 | tee wiki463-preflight.log
+          python -u .github/wiki463_finish.py test 2>&1 | tee wiki463-preflight.log
       - name: Compile original X4 application
         id: compile
         run: bash .github/wiki441_toolchain.sh
       - name: Recheck compiled source and package real application
         run: |
           set -euo pipefail
-          python .github/wiki463_finish.py test 2>&1 | tee wiki463-postbuild.log
+          python -u .github/wiki463_finish.py test 2>&1 | tee wiki463-postbuild.log
           python .github/wiki463_finish.py package
       - name: Retain debugging source without font or book assets
         if: always()
