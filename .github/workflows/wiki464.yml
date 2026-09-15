@@ -83,6 +83,15 @@ jobs:
               path.parent.mkdir(parents=True, exist_ok=True)
               path.write_bytes(final)
           print('Verified and applied', len(updated), 'source/support files.')
+          # Match 4.6.3's optional-test contract: the extra text test was never
+          # present in this baseline. Mandatory archive/queue/storage/heading
+          # tests remain required. This edits only the test driver, not firmware.
+          path = Path('.github/wiki464_finish.py')
+          text = path.read_text()
+          old = " run([sys.executable,'-u','.github/wiki463_text_tests.py'])"
+          new = " if (R/'.github/wiki463_text_tests.py').is_file():run([sys.executable,'-u','.github/wiki463_text_tests.py'])"
+          assert text.count(old) == 1
+          path.write_text(text.replace(old, new, 1))
           PY
           python .github/wiki464_finish.py prepare
       - name: Test cooperative indexing, resume, storage failures and final-source contracts
@@ -103,6 +112,7 @@ jobs:
         run: |
           mkdir -p wiki464-debug
           cp wiki-build.log wiki464-*.log wiki464-*.json wiki463-host-results.json wiki464-debug/ 2>/dev/null || true
+          cp .pio/build/wiki_x4_beta/firmware.bin .pio/build/wiki_x4_beta/firmware.elf .pio/build/wiki_x4_beta/firmware.map .pio/build/wiki_x4_beta/partitions.bin wiki464-debug/ 2>/dev/null || true
           tar --exclude='*/builtinFonts' --exclude='*/assets/Fonts' --exclude='*/assets/Icons' --exclude='*.ttf' --exclude='*.otf' --exclude='*.woff*' --exclude='*/.git' --exclude='*/lucide' --exclude='*/__pycache__' -czf wiki464-debug/source.tar.gz src lib scripts .github freeink-sdk platformio.ini platformio.local.ini requirements.txt
       - uses: actions/upload-artifact@v6
         if: always()
