@@ -1,0 +1,127 @@
+name: X4 Wiki 4.6.4 on-device XML indexing
+on:
+  push:
+    branches: [wiki-x4-4.6.4-experimental]
+    paths: ['.github/workflows/wiki464.yml', '.github/wiki464.ops.b64.*']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki464-c3-toolchain-v1-${{ github.run_id }}
+          restore-keys: |
+            wiki464-c3-toolchain-v1-
+            wiki463-c3-toolchain-v1-
+      - name: Recover the exact successful 4.6.3 source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wiki463-base"
+          if gh run download 34945882694 -R "$GITHUB_REPOSITORY" -n wiki463-build-debug -D "$RUNNER_TEMP/wiki463-base"; then
+            echo "39d0c02793321797cb0724422c0abaac34aaa23ef1ba8cebc5a8f7d13b73fe4d  $RUNNER_TEMP/wiki463-base/source.tar.gz" | sha256sum -c -
+            tar -xzf "$RUNNER_TEMP/wiki463-base/source.tar.gz"
+          else
+            # Reproducible fallback after the retained debug artifact expires.
+            python -m pip install pyyaml
+            python - <<'PY'
+          from pathlib import Path
+          import subprocess, yaml
+          workflow = yaml.safe_load(Path('.github/workflows/wiki463.yml').read_text())
+          for step in workflow['jobs']['build']['steps']:
+              if step.get('name') == 'Preflight production algorithms with sanitizers':
+                  break
+              if 'run' in step:
+                  subprocess.run(['bash', '-euo', 'pipefail', '-c', step['run']], check=True)
+          PY
+          fi
+      - name: Apply whole-source-hash-checked 4.6.4 delta
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import base64, hashlib, json, lzma
+          chunks = sorted(Path('.github').glob('wiki464.ops.b64.*'))
+          assert len(chunks) == 2
+          blob = base64.b64decode(''.join(p.read_text().strip() for p in chunks), validate=True)
+          assert hashlib.sha256(blob).hexdigest() == 'a96a45be9cf3c9fe4eb49db31ad2b8e95d6c0a5e9a9e4f29043e715694845120'
+          data = json.loads(lzma.decompress(blob))
+          updated = {}
+          for name, edits in data['edits'].items():
+              path = Path(name)
+              assert not path.is_absolute() and '..' not in path.parts
+              prior = path.read_bytes() if path.exists() else b''
+              expected = data['base'][name]
+              assert (hashlib.sha256(prior).hexdigest() == expected) if expected else not path.exists(), name
+              lines = prior.decode('utf-8').splitlines(True)
+              end = len(lines)
+              for start, stop, replacement in reversed(edits):
+                  assert 0 <= start <= stop <= end
+                  lines[start:stop] = replacement.splitlines(True)
+                  end = start
+              final = ''.join(lines).encode('utf-8')
+              assert hashlib.sha256(final).hexdigest() == data['after'][name], name
+              updated[path] = final
+          for path, final in updated.items():
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(final)
+          print('Verified and applied', len(updated), 'source/support files.')
+          PY
+          python .github/wiki464_finish.py prepare
+      - name: Test cooperative indexing, resume, storage failures and final-source contracts
+        run: |
+          set -euo pipefail
+          python -u .github/wiki464_finish.py test 2>&1 | tee wiki464-preflight.log
+      - name: Compile original X4 application with PlatformIO CLI
+        id: compile
+        run: bash .github/wiki441_toolchain.sh
+      - name: Recheck compiled source and retained reader regressions
+        run: |
+          set -euo pipefail
+          python -u .github/wiki464_finish.py test 2>&1 | tee wiki464-postbuild.log
+          python -u .github/wiki464_finish.py legacy 2>&1 | tee wiki464-retained-tests.log
+          python .github/wiki464_finish.py package
+      - name: Retain diagnostic evidence without font assets
+        if: always()
+        run: |
+          mkdir -p wiki464-debug
+          cp wiki-build.log wiki464-*.log wiki464-*.json wiki463-host-results.json wiki464-debug/ 2>/dev/null || true
+          tar --exclude='*/builtinFonts' --exclude='*/assets/Fonts' --exclude='*/assets/Icons' --exclude='*.ttf' --exclude='*.otf' --exclude='*.woff*' --exclude='*/.git' --exclude='*/lucide' --exclude='*/__pycache__' -czf wiki464-debug/source.tar.gz src lib scripts .github freeink-sdk platformio.ini platformio.local.ini requirements.txt
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: wiki464-build-debug
+          path: wiki464-debug/
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: success()
+        with:
+          name: CrossPoint-Wiki-4.6.4-X4-experimental
+          path: wiki464-dist/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/cache/save@v4
+        if: always() && steps.compile.outcome != 'skipped'
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki464-c3-toolchain-v1-${{ github.run_id }}
