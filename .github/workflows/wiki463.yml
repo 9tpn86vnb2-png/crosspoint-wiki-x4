@@ -1,0 +1,53 @@
+name: X4 Wiki 4.6.3 experimental preparation
+on:
+  push:
+    branches: [wiki-x4-4.6.3-experimental]
+    paths: ['.github/workflows/wiki463.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Reconstruct verified 4.6.2 final tree
+        run: |
+          set -euo pipefail
+          bash .github/wiki441_build.sh.00
+          bash .github/wiki441_build.sh.01a1
+          bash .github/wiki441_verify.sh
+          python .github/wiki442_epub_patch.py
+          python .github/wiki442_contract_tests.py
+          python .github/wiki450_apply.py
+          python .github/wiki450_contract_tests.py
+          python .github/wiki451_apply.py
+          python .github/wiki451_contract_tests.py
+          python .github/wiki452_apply.py
+          python .github/wiki452_contract_tests.py
+          python .github/wiki453_apply.py
+          python .github/wiki453_contract_tests.py
+          python .github/wiki454_apply.py
+          python .github/wiki454_contract_tests.py
+          python .github/wiki460_apply.py
+          python .github/wiki460_contract_tests.py
+          python .github/wiki461_apply.py
+          python .github/wiki461_contract_tests.py
+          python .github/wiki462_apply.py
+          python .github/wiki462_contract_tests.py
+      - name: Collect reference source, not firmware
+        run: |
+          tar --exclude='.git' --exclude='*/.git' --exclude='*/lucide' --exclude='*/builtinFonts' -czf /tmp/wiki462-reference-source.tar.gz src lib scripts .github freeink-sdk platformio.ini platformio.local.ini requirements.txt
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wiki462-reference-source-NOT-FIRMWARE
+          path: /tmp/wiki462-reference-source.tar.gz
+          retention-days: 7
