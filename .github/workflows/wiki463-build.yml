@@ -1,0 +1,72 @@
+name: Compile verified Wiki 4.6.3 original-X4 application
+on:
+  workflow_dispatch:
+  push:
+    branches: [wiki-x4-4.6.3-experimental]
+    paths:
+      - '.github/workflows/wiki463-build.yml'
+      - '.github/wiki463_build.py'
+      - '.github/wiki463-full.patch.xz.b64.*'
+      - '.github/wiki463_fix.py'
+permissions:
+  contents: read
+jobs:
+  build-original-x4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: wiki463-original-x4-pioarduino-55.03.37-v1
+          restore-keys: |
+            wiki441-toolchain-pioarduino-55.03.37-
+      - name: Reconstruct the established integrated 4.6.2 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/wiki441_build.sh.00
+          bash .github/wiki441_build.sh.01a1
+          bash .github/wiki441_verify.sh
+          python .github/wiki442_epub_patch.py
+          python .github/wiki442_contract_tests.py
+          for v in 450 451 452 453 454 460 461 462; do
+            python .github/wiki${v}_apply.py
+            python .github/wiki${v}_contract_tests.py
+          done
+      - name: Apply checked experimental 4.6.3 source patch
+        run: |
+          python .github/wiki463_build.py apply
+          if test -f .github/wiki463_fix.py; then python .github/wiki463_fix.py; fi
+      - name: Compile and link actual ESP32-C3 original-X4 application
+        shell: bash
+        run: bash .github/wiki441_toolchain.sh
+      - name: Validate linked image, version, partitions, source and linker reports
+        run: python .github/wiki463_build.py package
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: CrossPoint-Wiki-4.6.3-X4-experimental-verified-build
+          path: wiki463-dist/
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: wiki463-build-failure-evidence
+          path: |
+            wiki-build.log
+            wiki463-source-sha256.json
+            wiki463-applied.patch
+          if-no-files-found: warn
+          retention-days: 30
