@@ -1,0 +1,26 @@
+name: Capture checked ArduinoJson 7.4.2 host dependency
+on:
+  push:
+    branches: [wiki-x4-4.6.3-experimental]
+    paths: ['.github/workflows/wiki463-host-dependency.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  headers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch and verify official single-header release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p headers
+          curl --fail --location --retry 3 'https://github.com/bblanchon/ArduinoJson/releases/download/v7.4.2/ArduinoJson-v7.4.2.h' -o headers/ArduinoJson.h
+          echo 'a05ac98f4481d2398c103ca5ffcce8e2fcd7fa2fa1d8d9f38d5757454f448d97  headers/ArduinoJson.h' | sha256sum -c -
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ArduinoJson-7.4.2-checksum-verified-host-header
+          path: headers/
+          if-no-files-found: error
+          retention-days: 30
