@@ -50,33 +50,43 @@ jobs:
           python .github/wiki461_contract_tests.py
           python .github/wiki462_apply.py
           python .github/wiki462_contract_tests.py
-      - name: Apply experimental changes after all baseline tests
+          mkdir -p wiki463-baseline
+          cp lib/Epub/Epub/blocks/TextBlock.cpp lib/Epub/Epub/blocks/TextBlock.h wiki463-baseline/
+      - name: Apply the complete experimental change set
         run: |
           set -euo pipefail
           python .github/wiki463_storage.py
           python .github/wiki463_reader.py
-          if [ -f .github/wiki463_search.py ]; then python .github/wiki463_search.py; fi
-          if [ -f .github/wiki463_render.py ]; then python .github/wiki463_render.py; fi
-          if [ -f .github/wiki463_finish.py ]; then python .github/wiki463_finish.py prepare; fi
-      - name: Compile original X4 application
-        run: bash .github/wiki441_toolchain.sh
-      - name: Final-source tests and package
+          python .github/wiki463_search.py
+          python .github/wiki463_render.py
+          python .github/wiki463_review.py
+          python .github/wiki463_compile_fixes.py
+          python .github/wiki463_finish.py prepare
+      - name: Preflight production algorithms with sanitizers
         run: |
           set -euo pipefail
-          if [ -f .github/wiki463_finish.py ]; then
-            python .github/wiki463_finish.py test
-            python .github/wiki463_finish.py package
-          else
-            mkdir -p wiki463-debug
-            cp .pio/build/wiki_x4_beta/firmware.bin wiki463-debug/INTERMEDIATE-NOT-FINAL.bin
+          if [ ! -f .pio/libdeps/wiki_x4_beta/ArduinoJson/src/ArduinoJson.h ]; then
+            mkdir -p .pio/libdeps/wiki_x4_beta
+            git clone --depth 1 --branch v7.4.2 https://github.com/bblanchon/ArduinoJson.git .pio/libdeps/wiki_x4_beta/ArduinoJson
           fi
+          python .github/wiki463_finish.py test 2>&1 | tee wiki463-preflight.log
+      - name: Compile original X4 application
+        id: compile
+        run: bash .github/wiki441_toolchain.sh
+      - name: Recheck compiled source and package real application
+        run: |
+          set -euo pipefail
+          python .github/wiki463_finish.py test 2>&1 | tee wiki463-postbuild.log
+          python .github/wiki463_finish.py package
       - name: Retain debugging source without font or book assets
         if: always()
         run: |
           mkdir -p wiki463-debug
-          cp wiki-build.log wiki463-debug/ 2>/dev/null || true
-          cp wiki463-*.json wiki463-debug/ 2>/dev/null || true
-          tar --exclude='*/builtinFonts' --exclude='*/assets/Fonts' --exclude='*/assets/Icons' --exclude='*.ttf' --exclude='*.otf' --exclude='*.woff*' --exclude='*/.git' --exclude='*/lucide' -czf wiki463-debug/source.tar.gz src lib scripts .github freeink-sdk platformio.ini platformio.local.ini requirements.txt
+          cp wiki-build.log wiki463-*.log wiki463-*.json wiki463-debug/ 2>/dev/null || true
+          tar --exclude='*/builtinFonts' --exclude='*/assets/Fonts' --exclude='*/assets/Icons' --exclude='*.ttf' --exclude='*.otf' --exclude='*.woff*' --exclude='*/.git' --exclude='*/lucide' -czf wiki463-debug/source.tar.gz src lib scripts .github freeink-sdk platformio.ini platformio.local.ini requirements.txt wiki463-baseline
+          if [ -d .pio/libdeps/wiki_x4_beta/ArduinoJson/src ]; then
+            tar -czf wiki463-debug/arduinojson-src.tar.gz -C .pio/libdeps/wiki_x4_beta/ArduinoJson src library.json
+          fi
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -90,9 +100,9 @@ jobs:
           name: CrossPoint-Wiki-4.6.3-X4-experimental
           path: wiki463-dist/
           retention-days: 30
-          if-no-files-found: warn
+          if-no-files-found: error
       - uses: actions/cache/save@v4
-        if: always()
+        if: always() && steps.compile.outcome != 'skipped'
         with:
           path: |
             ~/.platformio
