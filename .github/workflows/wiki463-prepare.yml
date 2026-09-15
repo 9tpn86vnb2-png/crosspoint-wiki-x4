@@ -1,0 +1,47 @@
+name: Prepare 4.6.3 experimental baseline
+on:
+  push:
+    branches: [wiki-x4-experimental-463]
+    paths: ['.github/workflows/wiki463-prepare.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Reconstruct and test the exact 4.6.2 baseline
+        run: |
+          set -euo pipefail
+          python -m pip install pyyaml
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess, yaml
+          workflow = yaml.safe_load(Path('.github/workflows/wiki-x4-beta441.yml').read_text())
+          for step in workflow['jobs']['build']['steps']:
+              if step.get('name') == 'Install toolchain and build original X4':
+                  break
+              if 'run' in step:
+                  print('BASELINE:', step.get('name'), flush=True)
+                  subprocess.run(['bash', '-euo', 'pipefail', '-c', step['run']], check=True)
+          PY
+      - name: Retain integrated code without book data or font assets
+        run: |
+          mkdir -p preparation
+          tar --exclude='.git' --exclude='*/.git' --exclude='.pio' --exclude='*/builtinFonts' --exclude='*/assets/Fonts' --exclude='*/assets/Icons' --exclude='*.ttf' --exclude='*.otf' --exclude='*.woff*' --exclude='*.epub' --exclude='*.cdb' --exclude='*.bin' --exclude='preparation' -czf preparation/integrated-baseline.tar.gz src lib freeink-sdk scripts .github platformio.ini platformio.local.ini requirements.txt
+          sha256sum preparation/integrated-baseline.tar.gz > preparation/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wiki463-integrated-baseline-code
+          path: preparation/
+          retention-days: 14
+          if-no-files-found: error
