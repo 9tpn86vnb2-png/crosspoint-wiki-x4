@@ -1,0 +1,120 @@
+name: X4 Wiki 4.6.4.2 saved indexes and import throughput
+on:
+  push:
+    branches: [wiki-x4-4.6.4.2-index-reuse]
+    paths: ['.github/wiki4642.ops.b64', '.github/workflows/wiki4642.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki4642-c3-toolchain-${{ github.run_id }}
+          restore-keys: |
+            wiki4642-c3-toolchain-
+            wiki4641-c3-toolchain-
+            wiki464-c3-toolchain-v1-
+      - name: Restore exact successful 4.6.4.1 source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wiki4641-base"
+          if gh run download 35009614175 -R "$GITHUB_REPOSITORY" -n CrossPoint-Wiki-4.6.4.1-X4-hotfix -D "$RUNNER_TEMP/wiki4641-base"; then
+            echo "be509d22259eb348ddd17aef4e880f899e0e7a1c21b9850e232a13a47bd9aa00  $RUNNER_TEMP/wiki4641-base/4.6.4.1-source-without-font-assets.tar.gz" | sha256sum -c -
+            tar -xzf "$RUNNER_TEMP/wiki4641-base/4.6.4.1-source-without-font-assets.tar.gz"
+          else
+            python -m pip install pyyaml
+            python - <<'PY'
+          from pathlib import Path
+          import subprocess,yaml
+          workflow=yaml.safe_load(Path('.github/workflows/wiki4641.yml').read_text())
+          for step in workflow['jobs']['build']['steps']:
+              if step.get('name')=='Compile original X4 application with PlatformIO CLI': break
+              if 'run' in step: subprocess.run(['bash','-euo','pipefail','-c',step['run']],check=True)
+          PY
+          fi
+          mkdir -p wiki4642-baseline
+          cp -a src lib .github scripts freeink-sdk platformio.ini platformio.local.ini requirements.txt wiki4642-baseline/
+      - name: Apply reviewed source delta without changing accepted index formats
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import base64,hashlib,json,lzma
+          blob=base64.b64decode(Path('.github/wiki4642.ops.b64').read_text().strip(),validate=True)
+          assert hashlib.sha256(blob).hexdigest()=='e4fb6dce0a6571e8776c9f8f7a4ace913b9f8acd3f61c46ee7f073357222ef04'
+          data=json.loads(lzma.decompress(blob)); updated={}
+          for name,edits in data['edits'].items():
+              path=Path(name); assert not path.is_absolute() and '..' not in path.parts
+              prior=path.read_bytes() if path.exists() else b''
+              expected=data['base'][name]
+              assert (hashlib.sha256(prior).hexdigest()==expected) if expected else not path.exists(),name
+              lines=prior.decode().splitlines(True);end=len(lines)
+              for start,stop,replacement in reversed(edits):
+                  assert 0<=start<=stop<=end
+                  lines[start:stop]=replacement.splitlines(True);end=start
+              final=''.join(lines).encode();assert hashlib.sha256(final).hexdigest()==data['after'][name],name
+              updated[path]=final
+          for path,final in updated.items():
+              path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(final)
+          print('Hash-checked source files:',len(updated))
+          PY
+          python .github/wiki4642_release.py prepare
+      - name: Test real HAL, library switching, old checkpoints and I/O counts
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          python -u .github/wiki4642_test.py 2>&1 | tee wiki4642-preflight.log
+          python -u .github/wiki4642_release.py test 2>&1 | tee wiki4642-archive.log
+      - name: Compile original X4 application with PlatformIO CLI
+        id: compile
+        run: bash .github/wiki441_toolchain.sh
+      - name: Recheck compiled source and package real firmware
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          python -u .github/wiki4642_test.py 2>&1 | tee wiki4642-postbuild.log
+          python -u .github/wiki4642_release.py test 2>&1 | tee wiki4642-final-archive.log
+          python -u .github/wiki463_host/run.py --json .pio/libdeps/wiki_x4_beta/ArduinoJson/src 2>&1 | tee wiki4642-retained.log
+          python .github/wiki4642_release.py package
+      - uses: actions/upload-artifact@v6
+        if: success()
+        with:
+          name: CrossPoint-Wiki-4.6.4.2-X4-experimental
+          path: wiki4642-dist/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: wiki4642-diagnostics
+          path: |
+            wiki-build.log
+            wiki4642-*.log
+            wiki4642-*.json
+            wiki464-*.json
+          retention-days: 14
+      - uses: actions/cache/save@v4
+        if: always() && steps.compile.outcome != 'skipped'
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki4642-c3-toolchain-${{ github.run_id }}
