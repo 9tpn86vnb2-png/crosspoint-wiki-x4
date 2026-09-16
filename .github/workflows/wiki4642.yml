@@ -1,0 +1,93 @@
+name: X4 Wiki 4.6.4.2 indexing speed
+on:
+  push:
+    branches: [wiki-x4-4.6.4.2-speed]
+    paths: ['.github/wiki4642_*', '.github/workflows/wiki4642.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki4642-c3-toolchain-${{ github.run_id }}
+          restore-keys: |
+            wiki4642-c3-toolchain-
+            wiki4641-c3-toolchain-
+            wiki464-c3-toolchain-v1-
+      - name: Restore successful 4.6.4.1 sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wiki4641-base"
+          if gh run download 35009614175 -R "$GITHUB_REPOSITORY" -n CrossPoint-Wiki-4.6.4.1-X4-hotfix -D "$RUNNER_TEMP/wiki4641-base"; then
+            echo "be509d22259eb348ddd17aef4e880f899e0e7a1c21b9850e232a13a47bd9aa00  $RUNNER_TEMP/wiki4641-base/4.6.4.1-source-without-font-assets.tar.gz" | sha256sum -c -
+            tar -xzf "$RUNNER_TEMP/wiki4641-base/4.6.4.1-source-without-font-assets.tar.gz"
+          else
+            python -m pip install pyyaml
+            python - <<'PY'
+          from pathlib import Path
+          import subprocess,yaml
+          workflow=yaml.safe_load(Path('.github/workflows/wiki4641.yml').read_text())
+          for step in workflow['jobs']['build']['steps']:
+              if step.get('name')=='Compile original X4 application with PlatformIO CLI':break
+              if 'run' in step:subprocess.run(['bash','-euo','pipefail','-c',step['run']],check=True)
+          PY
+          fi
+      - name: Apply speed changes and check real HAL behavior
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          python .github/wiki4642_apply.py
+          python .github/wiki4642_release.py prepare
+          python -u .github/wiki4641_test.py 2>&1 | tee wiki4642-preflight.log
+      - name: Compile original X4 with PlatformIO CLI
+        id: compile
+        run: bash .github/wiki441_toolchain.sh
+      - name: Recheck compiled sources and package firmware
+        run: |
+          set -euo pipefail
+          python -u .github/wiki4641_test.py 2>&1 | tee wiki4642-real-hal.log
+          python -u .github/wiki4642_release.py test 2>&1 | tee wiki4642-archive.log
+          python -u .github/wiki463_host/run.py --json .pio/libdeps/wiki_x4_beta/ArduinoJson/src 2>&1 | tee wiki4642-retained.log
+          python .github/wiki4642_release.py package
+      - uses: actions/upload-artifact@v6
+        if: success()
+        with:
+          name: CrossPoint-Wiki-4.6.4.2-X4-speed
+          path: wiki4642-dist/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: wiki4642-diagnostics
+          path: |
+            wiki-build.log
+            wiki4642-*.log
+            wiki4641-real-hal-results.json
+            wiki464-*.json
+          retention-days: 14
+      - uses: actions/cache/save@v4
+        if: always() && steps.compile.outcome != 'skipped'
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki4642-c3-toolchain-${{ github.run_id }}
