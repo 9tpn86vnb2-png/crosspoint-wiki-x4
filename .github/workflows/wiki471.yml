@@ -1,0 +1,114 @@
+name: X4 Wiki 4.7.1 eight-way and navigation experiment
+on:
+  push:
+    branches: [wiki-x4-4.7.1-experimental]
+    paths: ['.github/workflows/wiki471.yml', '.github/wiki471.payload.*']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      WIKI471_BASE: /tmp/wiki471-base
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki471-c3-${{ github.run_id }}
+          restore-keys: |
+            wiki471-c3-
+            wiki470-c3-
+            wiki4664-c3-
+      - name: Restore exact 4.7.0 source and keep a test baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 35080978925 -R "$GITHUB_REPOSITORY" -n CrossPoint-Wiki-4.7.0-X4-experimental -D "$RUNNER_TEMP/base470"
+          echo "a35a09da5d38ad444f153bd7f405976e3eba1dbc2236d2a774b460018f569ff5  $RUNNER_TEMP/base470/4.7.0-source-without-font-assets.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/base470/4.7.0-source-without-font-assets.tar.gz"
+          mkdir -p "$WIKI471_BASE"
+          cp -a src lib scripts .github platformio.ini platformio.local.ini "$WIKI471_BASE/"
+      - name: Apply checked source delta
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import base64,hashlib,json,lzma,difflib
+          chunks=sorted(Path('.github').glob('wiki471.payload.*'));assert chunks
+          blob=base64.b64decode(''.join(p.read_text().strip() for p in chunks),validate=True)
+          assert hashlib.sha256(blob).hexdigest()=='716a2f734bdb73348a88e0fb7bfa1b9e1b6c7c6fabf1d8bf77ec816b7f5fc93e'
+          data=json.loads(lzma.decompress(blob));updated={};patch=[]
+          for name,item in data.items():
+              p=Path(name);assert not p.is_absolute() and '..' not in p.parts
+              prior=p.read_bytes() if p.exists() else b''
+              assert (hashlib.sha256(prior).hexdigest()==item['base']) if item['base'] else not p.exists(),name
+              lines=prior.decode().splitlines(True);end=len(lines)
+              for start,stop,replacement in reversed(item['edits']):
+                  assert 0<=start<=stop<=end
+                  lines[start:stop]=replacement.splitlines(True);end=start
+              final=''.join(lines).encode();assert hashlib.sha256(final).hexdigest()==item['after'],name
+              updated[p]=final
+              if name.startswith(('src/','lib/')) or name=='platformio.local.ini':patch.extend(difflib.unified_diff(prior.decode().splitlines(True),final.decode().splitlines(True),fromfile='a/'+name,tofile='b/'+name))
+          for p,final in updated.items():p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(final)
+          Path('4.7.0-to-4.7.1.patch').write_text(''.join(patch))
+          print('Verified and applied',len(updated),'source/support files')
+          PY
+          python scripts/gen_i18n.py
+          python .github/wiki471_release.py prepare
+      - name: Test upgrades, eight-way merge, paging, links, storage and battery logic
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          python -u .github/wiki471_release.py upgrade 2>&1 | tee wiki471-upgrade.log
+          python -u .github/wiki471_release.py test 2>&1 | tee wiki471-preflight.log
+      - name: Compile original X4 application using PlatformIO CLI
+        id: compile
+        run: bash .github/wiki441_toolchain.sh
+      - name: Verify compiled flags and final source, then package actual firmware
+        run: |
+          set -euo pipefail
+          pio run -e wiki_x4_beta -t compiledb > wiki471-compiledb.log 2>&1
+          python .github/wiki471_release.py flags
+          python -u .github/wiki471_release.py test 2>&1 | tee wiki471-postbuild.log
+          python -u .github/wiki463_host/run.py --json .pio/libdeps/wiki_x4_beta/ArduinoJson/src 2>&1 | tee wiki471-algorithms.log
+          python .github/wiki471_release.py package
+      - uses: actions/upload-artifact@v6
+        if: success()
+        with:
+          name: CrossPoint-Wiki-4.7.1-X4-experimental
+          path: wiki471-dist/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: wiki471-diagnostics
+          path: |
+            wiki-build.log
+            wiki471-*.log
+            wiki471-*.json
+            wiki470-tests.json
+            wiki465-tests.json
+            .pio/build/wiki_x4_beta/firmware.bin
+          retention-days: 14
+      - uses: actions/cache/save@v4
+        if: always() && steps.compile.outcome != 'skipped'
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki471-c3-${{ github.run_id }}
