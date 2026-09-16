@@ -2,7 +2,7 @@ name: X4 Wiki 4.7.3 guarded links and omissions
 on:
   push:
     branches: [wiki-x4-4.7.3-experimental]
-    paths: ['.github/workflows/wiki473.yml', '.github/wiki473.payload.*']
+    paths: ['.github/workflows/wiki473.yml', '.github/wiki473.payload.*', '.github/wiki473_finalize.py']
   workflow_dispatch:
 permissions:
   contents: read
@@ -67,6 +67,20 @@ jobs:
           Path('4.7.2-to-4.7.3.patch').write_text(''.join(patch))
           print('Verified and applied',len(updated),'source/support changes')
           PYLOAD
+          python .github/wiki473_finalize.py
+          python - <<'PYPATCH'
+          from pathlib import Path
+          import os,difflib
+          base=Path(os.environ['WIKI473_BASE']);patch=[]
+          paths=[Path('platformio.local.ini')]
+          for folder in ('src','lib'):
+              paths.extend(p for p in Path(folder).rglob('*') if p.is_file() and p.suffix in ('.h','.cpp','.c'))
+          for p in sorted(paths):
+              old=(base/p).read_text() if (base/p).is_file() else ''
+              new=p.read_text()
+              if old!=new:patch.extend(difflib.unified_diff(old.splitlines(True),new.splitlines(True),fromfile='a/'+str(p),tofile='b/'+str(p)))
+          Path('4.7.2-to-4.7.3.patch').write_text(''.join(patch))
+          PYPATCH
           python scripts/gen_i18n.py --strip-unused
           python .github/wiki473_release.py prepare
       - name: Test real navigation allocation failures, masks, checkpoints and retained behavior
