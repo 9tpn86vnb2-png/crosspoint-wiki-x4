@@ -1,0 +1,107 @@
+name: X4 Wiki 4.6.5 index reuse and throughput
+on:
+  push:
+    branches: [wiki-x4-4.6.5-experimental]
+    paths: ['.github/wiki465.payload.b64', '.github/workflows/wiki465.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      WIKI465_BASE: /tmp/wiki465-base
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki465-c3-${{ github.run_id }}
+          restore-keys: |
+            wiki465-c3-
+            wiki4641-c3-toolchain-
+            wiki464-c3-toolchain-v1-
+      - name: Restore exact 4.6.4.1 source and retain baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 35009614175 -R "$GITHUB_REPOSITORY" -n CrossPoint-Wiki-4.6.4.1-X4-hotfix -D "$RUNNER_TEMP/wiki4641-base"
+          echo "be509d22259eb348ddd17aef4e880f899e0e7a1c21b9850e232a13a47bd9aa00  $RUNNER_TEMP/wiki4641-base/4.6.4.1-source-without-font-assets.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/wiki4641-base/4.6.4.1-source-without-font-assets.tar.gz"
+          mkdir -p "$WIKI465_BASE"
+          cp -a src lib scripts .github platformio.ini platformio.local.ini "$WIKI465_BASE/"
+      - name: Apply checked index reuse and throughput delta
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import base64, hashlib, json, lzma
+          blob=base64.b64decode(Path('.github/wiki465.payload.b64').read_text(),validate=True)
+          assert hashlib.sha256(blob).hexdigest() == 'ccf0fe4633043da82ed4ecae64595d3d175d268ae946db91a9a95bf4da7113ad'
+          data=json.loads(lzma.decompress(blob));updated={}
+          for name, item in data.items():
+              path=Path(name);assert not path.is_absolute() and '..' not in path.parts
+              prior=path.read_bytes() if path.exists() else b''
+              assert (hashlib.sha256(prior).hexdigest()==item['base']) if item['base'] else not path.exists(),name
+              lines=prior.decode().splitlines(True);end=len(lines)
+              for start,stop,replacement in reversed(item['edits']):
+                  assert 0<=start<=stop<=end
+                  lines[start:stop]=replacement.splitlines(True);end=start
+              final=''.join(lines).encode();assert hashlib.sha256(final).hexdigest()==item['after'],name
+              updated[path]=final
+          for path,final in updated.items():
+              path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(final)
+          print('Verified',len(updated),'source/support changes')
+          PY
+          python .github/wiki465_release.py prepare
+      - name: Validate old-index compatibility and actual HAL behavior
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/wiki465-snapshots
+          python -u .github/wiki465_test.py --baseline-root "$WIKI465_BASE" --snapshots /tmp/wiki465-snapshots 2>&1 | tee wiki465-baseline.log
+          python -u .github/wiki465_test.py --snapshots /tmp/wiki465-snapshots 2>&1 | tee wiki465-preflight.log
+      - name: Compile original X4 application with PlatformIO CLI
+        id: compile
+        run: bash .github/wiki441_toolchain.sh
+      - name: Recheck final compiled source and package
+        run: |
+          set -euo pipefail
+          python -u .github/wiki465_test.py --snapshots /tmp/wiki465-snapshots 2>&1 | tee wiki465-postbuild.log
+          python -u .github/wiki465_release.py test 2>&1 | tee wiki465-archive.log
+          python -u .github/wiki463_host/run.py --json .pio/libdeps/wiki_x4_beta/ArduinoJson/src 2>&1 | tee wiki465-retained.log
+          python .github/wiki465_release.py package
+      - uses: actions/upload-artifact@v6
+        if: success()
+        with:
+          name: CrossPoint-Wiki-4.6.5-X4-experimental
+          path: wiki465-dist/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: wiki465-diagnostics
+          path: |
+            wiki-build.log
+            wiki465-*.log
+            wiki465-*.json
+          retention-days: 14
+      - uses: actions/cache/save@v4
+        if: always() && steps.compile.outcome != 'skipped'
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki465-c3-${{ github.run_id }}
