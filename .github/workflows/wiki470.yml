@@ -1,0 +1,112 @@
+name: X4 Wiki 4.7.0 library and resume experiment
+on:
+  push:
+    branches: [wiki-x4-4.7.0-experimental]
+    paths: ['.github/workflows/wiki470.yml', '.github/wiki470.payload.*']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki470-c3-${{ github.run_id }}
+          restore-keys: |
+            wiki470-c3-
+            wiki4664-c3-
+            wiki466-c3-
+      - name: Restore exact successful four-way merger source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 35069429657 -R "$GITHUB_REPOSITORY" -n CrossPoint-Wiki-4.6.6.4-X4-four-way -D "$RUNNER_TEMP/base4664"
+          echo "ccec2cca3455ab80a4754307bfc57a467a2e65a0b4263da8095d077d9bcd2f39  $RUNNER_TEMP/base4664/4.6.6.4-source-without-font-assets.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/base4664/4.6.6.4-source-without-font-assets.tar.gz"
+      - name: Apply checked 4.7.0 source and restore stock 1.6.0 battery
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import base64,hashlib,json,lzma,difflib
+          chunks=sorted(Path('.github').glob('wiki470.payload.*'));assert len(chunks)==2
+          blob=base64.b64decode(''.join(p.read_text().strip() for p in chunks),validate=True)
+          assert hashlib.sha256(blob).hexdigest()=='e9d81d31caffe9c13fa4d445f4252e757d2014c8e979b25578a1a3ac5ee1a023'
+          data=json.loads(lzma.decompress(blob));updated={};patch=[]
+          for name,item in data.items():
+              p=Path(name);assert not p.is_absolute() and '..' not in p.parts
+              prior=p.read_bytes() if p.exists() else b''
+              assert (hashlib.sha256(prior).hexdigest()==item['base']) if item['base'] else not p.exists(),name
+              lines=prior.decode().splitlines(True);end=len(lines)
+              for start,stop,replacement in reversed(item['edits']):
+                  assert 0<=start<=stop<=end
+                  lines[start:stop]=replacement.splitlines(True);end=start
+              final=''.join(lines).encode();assert hashlib.sha256(final).hexdigest()==item['after'],name
+              updated[p]=final
+              if name.startswith(('src/','lib/')) or name=='platformio.local.ini':
+                  patch.extend(difflib.unified_diff(prior.decode().splitlines(True),final.decode().splitlines(True),fromfile='a/'+name,tofile='b/'+name))
+          for p,final in updated.items():
+              p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(final)
+          Path('4.6.6.4-to-4.7.0.patch').write_text(''.join(patch))
+          print('Checked and applied',len(updated),'source/support files')
+          PY
+          git show 54337e6d73fc628f4ba523ddc89a743ca8c6e4c5:src/components/themes/BaseTheme.cpp > src/components/themes/BaseTheme.cpp
+          git -C freeink-sdk show cb9167d541c0f6e9d57cf8eae1f564a939883ecc:libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp > freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp
+          python .github/wiki470_release.py prepare
+      - name: Test paging, deletion, resume, real HAL and four-way merger
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          python -u .github/wiki470_release.py test 2>&1 | tee wiki470-preflight.log
+      - name: Compile original X4 application with PlatformIO CLI
+        id: compile
+        run: bash .github/wiki441_toolchain.sh
+      - name: Verify final source, compiler flags and real firmware
+        run: |
+          set -euo pipefail
+          pio run -e wiki_x4_beta -t compiledb > wiki470-compiledb.log 2>&1
+          python .github/wiki470_release.py flags
+          python -u .github/wiki470_release.py test 2>&1 | tee wiki470-postbuild.log
+          python -u .github/wiki463_host/run.py --json .pio/libdeps/wiki_x4_beta/ArduinoJson/src 2>&1 | tee wiki470-algorithm-tests.log
+          python .github/wiki470_release.py package
+      - uses: actions/upload-artifact@v6
+        if: success()
+        with:
+          name: CrossPoint-Wiki-4.7.0-X4-experimental
+          path: wiki470-dist/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: wiki470-diagnostics
+          path: |
+            wiki-build.log
+            wiki470-*.log
+            wiki470-*.json
+            wiki4664-tests.json
+            wiki465-tests.json
+            wiki464-host-results.json
+          retention-days: 14
+      - uses: actions/cache/save@v4
+        if: always() && steps.compile.outcome != 'skipped'
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki470-c3-${{ github.run_id }}
