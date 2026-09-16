@@ -67,7 +67,7 @@ jobs:
           Path('4.7.0-to-4.7.1.patch').write_text(''.join(patch))
           print('Verified and applied',len(updated),'source/support files')
           PY
-          python scripts/gen_i18n.py
+          python scripts/gen_i18n.py --strip-unused
           python .github/wiki471_release.py prepare
       - name: Test upgrades, eight-way merge, paging, links, storage and battery logic
         run: |
