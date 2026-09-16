@@ -2,7 +2,7 @@ name: X4 Wiki 4.7.2 browse controls and indexing focus
 on:
   push:
     branches: [wiki-x4-4.7.2-experimental]
-    paths: ['.github/workflows/wiki472.yml', '.github/wiki472.payload.*']
+    paths: ['.github/workflows/wiki472.yml', '.github/wiki472.payload.*', '.github/wiki472_finalize.py']
   workflow_dispatch:
 permissions:
   contents: read
@@ -67,6 +67,7 @@ jobs:
           Path('4.7.1-to-4.7.2.patch').write_text(''.join(patch))
           print('Verified and applied',len(updated),'source/support changes')
           PYLOAD
+          python .github/wiki472_finalize.py
           python scripts/gen_i18n.py --strip-unused
           python .github/wiki472_release.py prepare
       - name: Test controls, exclusions, old checkpoints and retained behaviour
