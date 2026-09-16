@@ -1,0 +1,97 @@
+name: X4 Wiki 4.6.4.2 indexing speed
+on:
+  push:
+    branches: [wiki-x4-4.6.4.2-index-speed]
+    paths: ['.github/wiki4642_*', '.github/workflows/wiki4642.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki4642-c3-${{ github.run_id }}
+          restore-keys: |
+            wiki4642-c3-
+            wiki4641-c3-toolchain-
+            wiki464-c3-toolchain-v1-
+      - name: Restore exact 4.6.4.1 integrated source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/base4641"
+          gh run download 35009614175 -R "$GITHUB_REPOSITORY" -n CrossPoint-Wiki-4.6.4.1-X4-hotfix -D "$RUNNER_TEMP/base4641"
+          echo "be509d22259eb348ddd17aef4e880f899e0e7a1c21b9850e232a13a47bd9aa00  $RUNNER_TEMP/base4641/4.6.4.1-source-without-font-assets.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/base4641/4.6.4.1-source-without-font-assets.tar.gz"
+      - name: Apply checked speed delta and test real HAL
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          python .github/wiki4642_apply.py
+          python .github/wiki4642_release.py prepare
+          python -u .github/wiki4641_test.py 2>&1 | tee wiki4642-real-hal-preflight.log
+          python -u .github/wiki4642_release.py test 2>&1 | tee wiki4642-archive-preflight.log
+      - name: Compile original X4 with PlatformIO CLI
+        id: compile
+        run: bash .github/wiki441_toolchain.sh
+      - name: Verify actual compiler flags and final code
+        run: |
+          set -euo pipefail
+          pio run -e wiki_x4_beta -t compiledb > wiki4642-compiledb.log 2>&1
+          python - <<'PY' > wiki4642-compile-flags.log
+          from pathlib import Path
+          import json,shlex
+          entries=json.loads(Path('compile_commands.json').read_text())
+          rows=[e for e in entries if e['file'].endswith('WikiIndexJob.cpp')]
+          assert rows, 'No indexer compile command'
+          for e in rows:
+              args=e.get('arguments') or shlex.split(e['command'])
+              opts=[a for a in args if a in ('-O0','-O1','-O2','-O3','-Os','-Oz','-Ofast','-Og')]
+              assert opts and opts[-1]=='-O2', opts
+              assert '-fexceptions' in args
+              print(json.dumps(e,indent=2))
+          print('PASS: real indexer compile command selects -O2 with scoped exceptions.')
+          PY
+          python -u .github/wiki4641_test.py 2>&1 | tee wiki4642-real-hal-postbuild.log
+          python -u .github/wiki4642_release.py test 2>&1 | tee wiki4642-archive-postbuild.log
+          python -u .github/wiki463_host/run.py --json .pio/libdeps/wiki_x4_beta/ArduinoJson/src 2>&1 | tee wiki4642-retained.log
+          python .github/wiki4642_release.py package
+      - uses: actions/upload-artifact@v6
+        if: success()
+        with:
+          name: CrossPoint-Wiki-4.6.4.2-X4-index-speed
+          path: wiki4642-dist/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: wiki4642-diagnostics
+          path: |
+            wiki-build.log
+            wiki4642-*.log
+            wiki464*-*.json
+          retention-days: 14
+      - uses: actions/cache/save@v4
+        if: always() && steps.compile.outcome != 'skipped'
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki4642-c3-${{ github.run_id }}
