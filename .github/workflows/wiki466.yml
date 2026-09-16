@@ -1,0 +1,90 @@
+name: X4 Wiki 4.6.6 combined indexing speed
+on:
+  push:
+    branches: [wiki-x4-4.6.6-combined-speed]
+    paths: ['.github/wiki466_apply.py', '.github/workflows/wiki466.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki466-c3-${{ github.run_id }}
+          restore-keys: |
+            wiki466-c3-
+            wiki465-c3-
+            wiki4642-c3-
+            wiki4641-c3-toolchain-
+      - name: Restore and fingerprint verified 4.6.5 source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 35061285418 -R "$GITHUB_REPOSITORY" -n CrossPoint-Wiki-4.6.5-X4-experimental -D "$RUNNER_TEMP/base465"
+          echo "5e99595fb26ab06c483f1c5f8e7af9b44f0fab91d0b6edcdf82a0635b94e15de  $RUNNER_TEMP/base465/4.6.5-source-without-font-assets.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/base465/4.6.5-source-without-font-assets.tar.gz"
+          mkdir -p /tmp/wiki466-base
+          cp -a src lib scripts .github platformio.ini platformio.local.ini /tmp/wiki466-base/
+      - name: Apply source merge and run actual-HAL regression gates
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          python .github/wiki466_apply.py
+          python .github/wiki466_release.py prepare
+          mkdir -p /tmp/wiki466-snapshots
+          python -u .github/wiki465_test.py --baseline-root /tmp/wiki466-base --snapshots /tmp/wiki466-snapshots 2>&1 | tee wiki466-baseline.log
+          python -u .github/wiki465_test.py --snapshots /tmp/wiki466-snapshots 2>&1 | tee wiki466-preflight.log
+          python -u .github/wiki466_release.py test 2>&1 | tee wiki466-archive-preflight.log
+      - name: Compile original X4 using PlatformIO CLI
+        id: compile
+        run: bash .github/wiki441_toolchain.sh
+      - name: Verify compiled optimization and final source
+        run: |
+          set -euo pipefail
+          pio run -e wiki_x4_beta -t compiledb > wiki466-compiledb.log 2>&1
+          python .github/wiki466_release.py flags
+          python -u .github/wiki465_test.py --snapshots /tmp/wiki466-snapshots 2>&1 | tee wiki466-postbuild.log
+          python -u .github/wiki466_release.py test 2>&1 | tee wiki466-archive-postbuild.log
+          python -u .github/wiki463_host/run.py --json .pio/libdeps/wiki_x4_beta/ArduinoJson/src 2>&1 | tee wiki466-retained.log
+          python .github/wiki466_release.py package
+      - uses: actions/upload-artifact@v6
+        if: success()
+        with:
+          name: CrossPoint-Wiki-4.6.6-X4-combined-speed
+          path: wiki466-dist/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: wiki466-diagnostics
+          path: |
+            wiki-build.log
+            wiki466-*.log
+            wiki466-*.json
+            wiki465-*.json
+            wiki464-*.json
+          retention-days: 14
+      - uses: actions/cache/save@v4
+        if: always() && steps.compile.outcome != 'skipped'
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki466-c3-${{ github.run_id }}
