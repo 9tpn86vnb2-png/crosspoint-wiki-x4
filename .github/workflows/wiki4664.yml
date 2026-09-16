@@ -1,0 +1,112 @@
+name: X4 Wiki 4.6.6.4 four-way title merger
+on:
+  push:
+    branches: [wiki-x4-4.6.6.4-four-way]
+    paths: ['.github/wiki4664.payload.b64.*', '.github/workflows/wiki4664.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki4664-c3-${{ github.run_id }}
+          restore-keys: |
+            wiki4664-c3-
+            wiki466-c3-
+            wiki465-c3-
+      - name: Restore exact 4.6.6 source and retain comparison baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 35064162481 -R "$GITHUB_REPOSITORY" -n CrossPoint-Wiki-4.6.6-X4-combined-speed -D "$RUNNER_TEMP/base466"
+          echo "67e5dd70156fa8773f94a8301c2f76800b15b0c72815bb3eead0c02588e340ca  $RUNNER_TEMP/base466/4.6.6-source-without-font-assets.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/base466/4.6.6-source-without-font-assets.tar.gz"
+          mkdir -p /tmp/wiki4664-base
+          cp -a src lib scripts .github platformio.ini platformio.local.ini /tmp/wiki4664-base/
+      - name: Apply fingerprint-checked four-way implementation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import base64, hashlib, json, lzma, difflib
+          chunks=sorted(Path('.github').glob('wiki4664.payload.b64.*'));assert len(chunks)==2
+          blob=base64.b64decode(''.join(p.read_text().strip() for p in chunks),validate=True)
+          assert hashlib.sha256(blob).hexdigest() == '438e8c5c14fc8a729233ce99631e13a4281eaf8a6d1cd328fb9c174b72123b0f'
+          data=json.loads(lzma.decompress(blob));updated={};patch=[]
+          for name,item in data.items():
+              p=Path(name);assert not p.is_absolute() and '..' not in p.parts
+              prior=p.read_bytes() if p.exists() else b''
+              assert (hashlib.sha256(prior).hexdigest()==item['base']) if item['base'] else not p.exists(),name
+              final=item['content'].encode();assert hashlib.sha256(final).hexdigest()==item['after'],name
+              updated[p]=final
+              if name.startswith('src/') or name=='platformio.local.ini':
+                  patch.extend(difflib.unified_diff(prior.decode().splitlines(True),item['content'].splitlines(True),fromfile='a/'+name,tofile='b/'+name))
+          for p,final in updated.items():
+              p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(final)
+          Path('4.6.6-to-4.6.6.4.patch').write_text(''.join(patch))
+          print('Verified and applied',len(updated),'source/support files')
+          PY
+          python .github/wiki4664_release.py prepare
+      - name: Test four-way merge, legacy checkpoints, faults and identical output
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          mkdir -p /tmp/wiki4664-snapshots /tmp/wiki4664-compare/{before,after}
+          python -u .github/wiki4664_test.py --baseline-root /tmp/wiki4664-base --snapshots /tmp/wiki4664-snapshots --output /tmp/wiki4664-compare/before 2>&1 | tee wiki4664-baseline.log
+          python -u .github/wiki4664_test.py --snapshots /tmp/wiki4664-snapshots --output /tmp/wiki4664-compare/after 2>&1 | tee wiki4664-preflight.log
+          python -u .github/wiki4664_release.py test 2>&1 | tee wiki4664-retained-preflight.log
+          python .github/wiki4664_release.py comparison
+      - name: Compile original X4 application with PlatformIO CLI
+        id: compile
+        run: bash .github/wiki441_toolchain.sh
+      - name: Check actual optimization, final source and compiled image
+        run: |
+          set -euo pipefail
+          pio run -e wiki_x4_beta -t compiledb > wiki4664-compiledb.log 2>&1
+          python .github/wiki4664_release.py flags
+          python -u .github/wiki4664_test.py --snapshots /tmp/wiki4664-snapshots --output /tmp/wiki4664-compare/after 2>&1 | tee wiki4664-postbuild.log
+          python -u .github/wiki4664_release.py test 2>&1 | tee wiki4664-retained-postbuild.log
+          python -u .github/wiki463_host/run.py --json .pio/libdeps/wiki_x4_beta/ArduinoJson/src 2>&1 | tee wiki4664-algorithm-tests.log
+          python .github/wiki4664_release.py package
+      - uses: actions/upload-artifact@v6
+        if: success()
+        with:
+          name: CrossPoint-Wiki-4.6.6.4-X4-four-way
+          path: wiki4664-dist/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: wiki4664-diagnostics
+          path: |
+            wiki-build.log
+            wiki4664-*.log
+            wiki4664-*.json
+            wiki465-tests.json
+            wiki464-host-results.json
+          retention-days: 14
+      - uses: actions/cache/save@v4
+        if: always() && steps.compile.outcome != 'skipped'
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki4664-c3-${{ github.run_id }}
