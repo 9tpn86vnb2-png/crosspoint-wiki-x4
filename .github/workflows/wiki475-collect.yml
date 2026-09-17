@@ -1,0 +1,57 @@
+name: Collect compiled 4.7.5 for SPI inspection
+on:
+  push:
+    branches: [wiki-x4-4.7.5-buffered-spi]
+    paths: ['.github/workflows/wiki475-collect.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 5cc260c0d74dcdd9a3882fddf0d9d2c37a8962a1
+          persist-credentials: false
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki475-c3-35174413235-1
+          fail-on-cache-miss: true
+      - name: Inspect exact cached CLI outputs without modifying them
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p wiki475-inspection
+          gh run download 35174413235 -R "$GITHUB_REPOSITORY" -n wiki475-diagnostics -D wiki475-inspection/diagnostics
+          cp .pio/build/wiki_x4_beta/firmware.bin .pio/build/wiki_x4_beta/firmware.elf .pio/build/wiki_x4_beta/firmware.map wiki475-inspection/
+          ~/.platformio/packages/toolchain-riscv32-esp/bin/riscv32-esp-elf-objdump -d -C wiki475-inspection/firmware.elf > wiki475-inspection/target-disassembly.txt
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,os,re
+          p=Path('wiki475-inspection');b=(p/'firmware.bin').read_bytes();e=(p/'firmware.elf').read_bytes()
+          assert b[0]==233 and b[12:14]==b'\x05\x00'
+          assert b[176:208]==hashlib.sha256(e).digest()
+          assert b'1.6.0-wiki-4.7.5\x00' in b[:256]
+          text=(p/'target-disassembly.txt').read_text()
+          parts=re.split(r'(?m)^(?=[0-9a-f]+ <)',text)
+          selected=[s for s in parts if s.splitlines() and any(n in s.splitlines()[0] for n in ['SdSpiCard::readData(', 'SdSpiCard::writeData(', 'SdSpiArduinoDriver::receive(', 'SdSpiArduinoDriver::send(', 'SPIClass::transfer(', 'SPIClass::transferBytes(', 'spiTransferBytesNL'])]
+          (p/'SPI-disassembly.txt').write_text('\n'.join(selected))
+          (p/'target-disassembly.txt').unlink()
+          report={'compiled_run':35174413235,'compiled_commit':'5cc260c0d74dcdd9a3882fddf0d9d2c37a8962a1','cache_key':'wiki475-c3-35174413235-1','collector_run':os.environ['GITHUB_RUN_ID'],'binary_sha256':hashlib.sha256(b).hexdigest(),'binary_bytes':len(b),'ELF_sha256':hashlib.sha256(e).hexdigest(),'ELF_digest_matched':True,'no_binary_bytes_modified':True,'status':'inspection artifact, not yet release-approved'}
+          (p/'provenance.json').write_text(json.dumps(report,indent=2)+'\n')
+          (p/'SHA256SUMS.txt').write_text(''.join(hashlib.sha256(f.read_bytes()).hexdigest()+'  '+str(f.relative_to(p))+'\n' for f in sorted(p.rglob('*')) if f.is_file() and f.name!='SHA256SUMS.txt'))
+          print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wiki475-compiled-inspection
+          path: wiki475-inspection/
+          retention-days: 14
+          if-no-files-found: error
