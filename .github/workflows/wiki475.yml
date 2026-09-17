@@ -2,7 +2,7 @@ name: X4 Wiki 4.7.5 buffered SPI experiment
 on:
   push:
     branches: [wiki-x4-4.7.5-buffered-spi]
-    paths: ['.github/workflows/wiki475.yml', '.github/wiki475*']
+    paths: ['.github/workflows/wiki475.yml', '.github/wiki475*', '.github/buffered_spi_release_fix.py']
   workflow_dispatch:
 permissions:
   contents: read
@@ -90,6 +90,8 @@ jobs:
               p=Path(n);assert not p.is_absolute() and '..' not in p.parts and not p.exists(),n
               p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text)
           PY
+          python .github/buffered_spi_release_fix.py
+          python scripts/build_html.py
           python .github/wiki475_release.py apply
           python scripts/gen_i18n.py --strip-unused
           python .github/wiki475_release.py prepare
