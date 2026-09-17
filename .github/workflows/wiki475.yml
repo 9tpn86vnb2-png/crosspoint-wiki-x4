@@ -1,0 +1,105 @@
+name: X4 Wiki 4.7.5 buffered SPI experiment
+on:
+  push:
+    branches: [wiki-x4-4.7.5-buffered-spi]
+    paths: ['.github/workflows/wiki475.yml', '.github/wiki475*']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      WIKI475_BASE: /tmp/wiki475-base
+      WIKI475_BASE_ARTIFACT: /tmp/wiki475-base-artifact
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki475-c3-${{ github.run_id }}
+          restore-keys: |
+            wiki475-c3-
+            wiki474-c3-
+      - name: Restore exact compiled 4.7.4 and preserve comparison source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 35155882489 -R "$GITHUB_REPOSITORY" -n CrossPoint-Wiki-4.7.4-X4-experimental -D "$WIKI475_BASE_ARTIFACT"
+          echo "568c0e57af3b4861858fede6a7ebe1050db8d873885e7ac8cd62fb87ddef94f6  $WIKI475_BASE_ARTIFACT/4.7.4-source-without-font-assets.tar.gz" | sha256sum -c -
+          tar -xzf "$WIKI475_BASE_ARTIFACT/4.7.4-source-without-font-assets.tar.gz"
+          mkdir -p "$WIKI475_BASE"
+          cp -a src lib scripts .github freeink-sdk platformio.ini platformio.local.ini "$WIKI475_BASE/"
+      - name: Apply only buffered-SPI flag and version, retain source integrity gates
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import base64,hashlib,json,lzma
+          blob=base64.b64decode(Path('.github/wiki475.payload.b64').read_text().strip(),validate=True)
+          assert hashlib.sha256(blob).hexdigest()=='c5619fa61060145335f0974638a554fc02149b77eab73db124e53ffa2c0e6000'
+          data=json.loads(lzma.decompress(blob))
+          for n,text in data.items():
+              p=Path(n);assert not p.is_absolute() and '..' not in p.parts and not p.exists(),n
+              p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text)
+          PY
+          python .github/wiki475_release.py apply
+          python scripts/gen_i18n.py --strip-unused
+          python .github/wiki475_release.py prepare
+      - name: Check checkpoint compatibility and unchanged index bytes
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          python -u .github/wiki475_release.py upgrade 2>&1 | tee wiki475-upgrade.log
+      - name: Compile original X4 application with PlatformIO CLI
+        id: compile
+        run: bash .github/wiki441_toolchain.sh
+      - name: Test actual installed SdFat array and scalar transfer semantics
+        run: |
+          set -euo pipefail
+          python -u .github/wiki475_spi_tests.py 2>&1 | tee wiki475-spi-tests.log
+      - name: Post-build regression suites, compiler evidence and image packaging
+        run: |
+          set -euo pipefail
+          python -m pip install pyelftools
+          pio run -e wiki_x4_beta -t compiledb > wiki475-compiledb.log 2>&1
+          python -u .github/wiki475_release.py test 2>&1 | tee wiki475-postbuild.log
+          python -u .github/wiki463_host/run.py --json .pio/libdeps/wiki_x4_beta/ArduinoJson/src 2>&1 | tee wiki475-algorithms.log
+          python -u .github/wiki475_release.py package 2>&1 | tee wiki475-packaging.log
+      - uses: actions/upload-artifact@v6
+        if: success()
+        with:
+          name: CrossPoint-Wiki-4.7.5-X4-experimental
+          path: wiki475-dist/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: wiki475-diagnostics
+          path: |
+            wiki-build.log
+            wiki475-*.log
+            wiki475-*.json
+            wiki475-*.txt
+            wiki474-*.json
+          retention-days: 14
+      - uses: actions/cache/save@v4
+        if: always() && steps.compile.outcome != 'skipped'
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: wiki475-c3-${{ github.run_id }}
