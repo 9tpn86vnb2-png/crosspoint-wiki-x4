@@ -28,10 +28,45 @@ jobs:
           path: |
             ~/.platformio
             .pio
-          key: wiki475-c3-${{ github.run_id }}
+          key: wiki475-c3-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             wiki475-c3-
             wiki474-c3-
+      - name: Fetch exact pinned registry wrapper through alternate official endpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+          python - <<'PY'
+          import hashlib,io,json,os,subprocess,zipfile
+          from pathlib import Path
+          from platformio.package.manager.tool import ToolPackageManager
+          url='https://github.com/pioarduino/registry/releases/download/0.0.1/riscv32-esp-elf-14.2.0_20251107.zip'
+          expected='33abc2866247754ccca35f75329a12d99cbb55baaec533d99ee5d373473daeaa'
+          pm=ToolPackageManager();cache=Path(pm.compute_download_path(url,''));cache.parent.mkdir(parents=True,exist_ok=True)
+          data=cache.read_bytes() if cache.is_file() else b''
+          route='verified existing download cache'
+          if hashlib.sha256(data).hexdigest()!=expected:
+              temporary=Path(os.environ['RUNNER_TEMP'])/'wiki475-pinned-compiler-wrapper.zip'
+              routes=[('official release asset API',['gh','api','-H','Accept: application/octet-stream','repos/pioarduino/registry/releases/assets/318517187']),('official browser endpoint cache bypass',['curl','-fL','--retry','1','--connect-timeout','15','--max-time','90',url+'?download=1'])]
+              for route,cmd in routes:
+                  try:
+                      with temporary.open('wb') as f:r=subprocess.run(cmd,stdout=f,stderr=subprocess.PIPE,timeout=120)
+                  except subprocess.TimeoutExpired:continue
+                  data=temporary.read_bytes()
+                  if r.returncode==0 and hashlib.sha256(data).hexdigest()==expected:break
+              else:raise RuntimeError('Exact official registry wrapper unavailable through bounded alternate routes')
+              cache.write_bytes(data)
+          assert hashlib.sha256(data).hexdigest()==expected
+          pm.set_download_utime(str(cache))
+          with zipfile.ZipFile(io.BytesIO(data)) as z:
+              assert z.testzip() is None
+              members=z.namelist()
+          report={'source_url':url,'release_asset_id':318517187,'sha256':expected,'bytes':len(data),'route':route,'members':members,'compiler_version_changed':False,'firmware_source_changed':False}
+          Path('wiki475-toolchain-download.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PY
       - name: Restore exact compiled 4.7.4 and preserve comparison source
         env:
           GH_TOKEN: ${{ github.token }}
@@ -85,6 +120,7 @@ jobs:
           path: wiki475-dist/
           retention-days: 30
           if-no-files-found: error
+          overwrite: true
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -96,10 +132,11 @@ jobs:
             wiki475-*.txt
             wiki474-*.json
           retention-days: 14
+          overwrite: true
       - uses: actions/cache/save@v4
-        if: always() && steps.compile.outcome != 'skipped'
+        if: always()
         with:
           path: |
             ~/.platformio
             .pio
-          key: wiki475-c3-${{ github.run_id }}
+          key: wiki475-c3-${{ github.run_id }}-${{ github.run_attempt }}
