@@ -1,4 +1,4 @@
-name: Orbit Android build tools
+name: Orbit host-test dependency
 on:
   push:
     branches: [orbit-android-tools-20261116]
@@ -7,25 +7,20 @@ permissions:
 jobs:
   tools:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - name: Export installed Android compilation tools
+      - name: Fetch pinned JVM-only JSON test library
         shell: bash
         run: |
           set -euo pipefail
-          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          test -f "$SDK/platforms/android-35/android.jar"
-          test -d "$SDK/build-tools/35.0.0"
-          mkdir -p orbit-sdk/platforms/android-35 orbit-sdk/build-tools/35.0.0
-          cp "$SDK/platforms/android-35/android.jar" orbit-sdk/platforms/android-35/
-          cp -a "$SDK/build-tools/35.0.0/." orbit-sdk/build-tools/35.0.0/
-          printf 'Runner: ubuntu-24.04\nPlatform: android-35\nBuild-tools: 35.0.0\n' > orbit-sdk/PROVENANCE.txt
-          find orbit-sdk -type f -print0 | sort -z | xargs -0 sha256sum > SDK-SHA256SUMS.txt
-          tar -czf orbit-android-sdk.tar.gz orbit-sdk SDK-SHA256SUMS.txt
-          sha256sum orbit-android-sdk.tar.gz
+          mkdir -p test-dependency
+          cd test-dependency
+          curl --fail --silent --show-error --location --proto '=https' -o json-20240303.jar https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar
+          curl --fail --silent --show-error --location --proto '=https' -o json-20240303.jar.sha1 https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar.sha1
+          printf '%s  json-20240303.jar\n' "$(cat json-20240303.jar.sha1)" | sha1sum -c -
+          sha256sum json-20240303.jar > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: orbit-android-compilation-tools
-          path: orbit-android-sdk.tar.gz
+          name: orbit-host-json-test-dependency
+          path: test-dependency/
           retention-days: 3
-          compression-level: 0
