@@ -1,0 +1,31 @@
+name: Orbit Android build tools
+on:
+  push:
+    branches: [orbit-android-tools-20261116]
+permissions:
+  contents: read
+jobs:
+  tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Export installed Android compilation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -f "$SDK/platforms/android-35/android.jar"
+          test -d "$SDK/build-tools/35.0.0"
+          mkdir -p orbit-sdk/platforms/android-35 orbit-sdk/build-tools/35.0.0
+          cp "$SDK/platforms/android-35/android.jar" orbit-sdk/platforms/android-35/
+          cp -a "$SDK/build-tools/35.0.0/." orbit-sdk/build-tools/35.0.0/
+          printf 'Runner: ubuntu-24.04\nPlatform: android-35\nBuild-tools: 35.0.0\n' > orbit-sdk/PROVENANCE.txt
+          find orbit-sdk -type f -print0 | sort -z | xargs -0 sha256sum > SDK-SHA256SUMS.txt
+          tar -czf orbit-android-sdk.tar.gz orbit-sdk SDK-SHA256SUMS.txt
+          sha256sum orbit-android-sdk.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orbit-android-compilation-tools
+          path: orbit-android-sdk.tar.gz
+          retention-days: 3
+          compression-level: 0
