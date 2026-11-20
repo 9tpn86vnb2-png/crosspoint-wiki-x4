@@ -1,0 +1,35 @@
+name: PocketLink build tools
+on:
+  push:
+    branches: [pocketlink-build-tools-20261119]
+    paths: [.github/workflows/pocketlink-tools.yml]
+permissions:
+  contents: read
+jobs:
+  tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Stage installed Android tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          BT="$SDK/build-tools/35.0.0"
+          PLATFORM="$SDK/platforms/android-35"
+          if [ ! -f "$BT/lib/d8.jar" ] || [ ! -f "$PLATFORM/android.jar" ]; then
+            yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+            "$SDK/cmdline-tools/latest/bin/sdkmanager" 'build-tools;35.0.0' 'platforms;android-35'
+          fi
+          mkdir -p tools/lib tools/lib64
+          cp "$PLATFORM/android.jar" tools/
+          cp "$BT/aapt2" "$BT/aapt" "$BT/zipalign" tools/
+          cp "$BT/lib/d8.jar" "$BT/lib/apksigner.jar" tools/lib/
+          cp -a "$BT/lib64/"* tools/lib64/
+          (cd tools && find . -type f -print0 | sort -z | xargs -0 sha256sum > ../SHA256SUMS.txt)
+          tar czf android-tools.tar.gz tools SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pocketlink-android-tools
+          path: android-tools.tar.gz
+          retention-days: 1
