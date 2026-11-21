@@ -1,0 +1,33 @@
+name: Nomad Daily toolchain
+on:
+  push:
+    branches: [nomad-daily-prototype]
+    paths: [.github/workflows/nomad-daily-toolchain.yml]
+permissions:
+  contents: read
+jobs:
+  tools:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Prepare installed Android SDK tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          test -f "$SDK/platforms/android-35/android.jar" || "$SDK/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35'
+          test -d "$SDK/build-tools/35.0.0" || "$SDK/cmdline-tools/latest/bin/sdkmanager" 'build-tools;35.0.0'
+          mkdir -p bundle/platforms/android-35 bundle/build-tools/35.0.0
+          cp "$SDK/platforms/android-35/android.jar" bundle/platforms/android-35/
+          cp "$SDK/platforms/android-35/source.properties" bundle/platforms/android-35/
+          cp -a "$SDK/build-tools/35.0.0/." bundle/build-tools/35.0.0/
+          tar -czf nomad-android-tools.tar.gz -C bundle .
+          sha256sum nomad-android-tools.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nomad-android-tools
+          path: |
+            nomad-android-tools.tar.gz
+            SHA256SUMS
+          retention-days: 1
+          compression-level: 0
