@@ -1,0 +1,28 @@
+name: Nomad Mathbook dependencies
+on:
+  push:
+    branches: [nomad-daily-prototype]
+    paths: [.github/workflows/nomad-mathbook-dependencies.yml]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Fetch pinned open-source math libraries without running package scripts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir bundle
+          cd bundle
+          npm pack --ignore-scripts mathjs@13.2.3
+          npm pack --ignore-scripts nerdamer@1.1.13
+          npm view mathjs@13.2.3 dist --json > mathjs-registry.json
+          npm view nerdamer@1.1.13 dist --json > nerdamer-registry.json
+          sha256sum *.tgz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nomad-mathbook-dependencies
+          path: bundle/
+          retention-days: 1
