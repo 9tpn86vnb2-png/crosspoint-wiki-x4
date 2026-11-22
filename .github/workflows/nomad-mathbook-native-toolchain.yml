@@ -1,0 +1,40 @@
+name: Mathbook native plugin toolchain
+on:
+  push:
+    branches: [nomad-daily-prototype]
+    paths: [.github/workflows/nomad-mathbook-native-toolchain.yml]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Collect official SDK, template and pinned React Native tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p deps template provenance
+          npm view sn-plugin-lib version dist --json > provenance/sn-plugin-lib-registry.json
+          npm view @supernote-plugin/sn-plugin-template version dist --json > provenance/template-registry.json
+          cd deps
+          npm init -y
+          npm install --save-exact --legacy-peer-deps --ignore-scripts react@19.0.0 react-native@0.79.2 @react-native/metro-config@0.79.2 @react-native/babel-preset@0.79.2 @react-native-community/cli@18.0.0 @react-native-community/cli-platform-android@18.0.0 react-test-renderer@19.0.0 typescript@5.8.3 sn-plugin-lib
+          npm ls --depth=0 > ../provenance/installed.txt || true
+          cd ../template
+          npm pack @supernote-plugin/sn-plugin-template
+          tar -xzf *.tgz
+          cd ..
+          tar -czf mathbook-native-toolchain.tar.gz deps template provenance
+          sha256sum mathbook-native-toolchain.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mathbook-native-toolchain
+          path: |
+            mathbook-native-toolchain.tar.gz
+            SHA256SUMS
+          retention-days: 1
+          compression-level: 0
